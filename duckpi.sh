@@ -53,16 +53,16 @@ function convert()
 		kbcode='kp-plus'
 	elif [ "$1" == "=" ]
 	then
-		kbcode='equal'
+		kbcode='left-shift 0'
 	elif [ "$1" == "_" ]
 	then
 		kbcode='left-shift minus'
 	elif [ "$1" == "-" ]
 	then
-		kbcode='minus'
+		kbcode='kp-minus'
 	elif [ "$1" == "\"" ]
 	then
-		kbcode='left-shift 2'
+		kbcode='left-shift quote'
 	elif [ "$1" == "'" ]
 	then
 		kbcode='quote'
@@ -89,10 +89,10 @@ function convert()
 		kbcode='backslash'
 	elif [ "$1" == "|" ]
 	then
-		kbcode='left-shift backslash'
+		kbcode='right-alt 1'
 	elif [ "$1" == "/" ]
 	then
-		kbcode='slash'
+		kbcode='left-shift 7'
 	elif [ "$1" == "{" ]
 	then
 		kbcode='left-shift lbracket'
@@ -101,10 +101,10 @@ function convert()
 		kbcode='left-shift rbracket'
 	elif [ "$1" == "(" ]
 	then
-		kbcode='left-shift 8'
+		kbcode='left-shift 9'
 	elif [ "$1" == ")" ]
 	then
-		kbcode='left-shift 9'
+		kbcode='left-shift 0'
 	elif [ "$1" == "[" ]
 	then
 		kbcode='lbracket'
