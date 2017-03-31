@@ -26,9 +26,10 @@ Credits to Original Authors:
 
     echo "dtoverlay=dwc2" | sudo tee -a /boot/config.txt
 
-9) Place the dwc2 in the driver modules to boot with the OS:
+9) Place dwc2 and libcomposite in the modules file to boot with the OS:
 
     echo "dwc2" | sudo tee /etc/modules
+    echo "libcomposite" | sudo tee /etc/modules
 
 10) Copy the following into your /etc/rc.local file.  This allows you to place a "payload.dd" script in the "boot" drive that appears when you plug the SD card into a computer, it will then copy the file and format it for Unix (because Windows machines format the text differently):
 
