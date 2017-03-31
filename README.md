@@ -38,7 +38,7 @@ Credits to Original Authors:
 
 11) Copy the actual payload into /boot, this directory can also be accessed in Windows by simply placing your micro SD card into a card reader and copying it to the drive that appears.
 
-cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /boot/payload.dd
+    cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /boot/payload.dd
 
 12) Place SD card into the Raspberry Pi Zero, plug it into the target host machine via USB cable in the peripheral micro USB port, NOT THE POWER PORT.  A power cord is not required as the Pi Zero will take power directly from the host machine.
 
