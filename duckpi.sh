@@ -62,7 +62,7 @@ function convert()
 		kbcode='minus'
 	elif [ "$1" == "\"" ]
 	then
-		kbcode='left-shift quote'
+		kbcode='left-shift 2'
 	elif [ "$1" == "'" ]
 	then
 		kbcode='quote'
@@ -74,7 +74,7 @@ function convert()
 		kbcode='semicolon'
 	elif [ "$1" == "<" ]
 	then
-		kbcode='left-shift comma'
+		kbcode='period'
 	elif [ "$1" == "," ]
 	then
 		kbcode='comma'
@@ -101,10 +101,10 @@ function convert()
 		kbcode='left-shift rbracket'
 	elif [ "$1" == "(" ]
 	then
-		kbcode='left-shift 9'
+		kbcode='left-shift 8'
 	elif [ "$1" == ")" ]
 	then
-		kbcode='left-shift 0'
+		kbcode='left-shift 9'
 	elif [ "$1" == "[" ]
 	then
 		kbcode='lbracket'
