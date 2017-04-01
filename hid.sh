@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# modprobe libcomposite
+. /etc/raspiducky/raspiducky.conf
 
-# KEYBOARD
 cd /sys/kernel/config/usb_gadget/
 mkdir -p g1
 cd g1
@@ -15,6 +14,8 @@ echo "fedcba9876543210" > strings/0x409/serialnumber
 echo "Parasite Team" > strings/0x409/manufacturer
 echo "Raspiducky" > strings/0x409/product
 N="usb0"
+
+# KEYBOARD
 mkdir -p functions/hid.$N
 echo 1 > functions/hid.usb0/protocol
 echo 1 > functions/hid.usb0/subclass
@@ -26,6 +27,22 @@ echo "Config $C: ECM network" > configs/c.$C/strings/0x409/configuration
 echo 250 > configs/c.$C/MaxPower
 ln -s functions/hid.$N configs/c.$C/
 # End KEYBOARD
+
+# STORAGE
+if [ -e $STORAGE_FILE ]
+then
+    [ -d $STORAGE_MOUNT ] || mkdir $STORAGE_MOUNT
+    mount -o loop,rw -t vfat $STORAGE_FILE $STORAGE_MOUNT
+    mkdir -p functions/mass_storage.usb0
+    echo 1 > functions/mass_storage.usb0/stall
+    echo 0 > functions/mass_storage.usb0/lun.0/removable
+    echo 0 > functions/mass_storage.usb0/lun.0/cdrom
+    echo 0 > functions/mass_storage.usb0/lun.0/ro
+    echo 0 > functions/mass_storage.usb0/lun.0/nofua
+    echo $STORAGE_FILE > functions/mass_storage.usb0/lun.0/file
+    ln -s functions/mass_storage.usb0 configs/c.$C/
+fi
+# End STORAGE
 
 ls /sys/class/udc > UDC
 
