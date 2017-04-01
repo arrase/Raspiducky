@@ -9,6 +9,9 @@ A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 
 ### Configuration
 
+* Flash Raspbian 
+* Login as pi, use a screen over HDMI and a keyboard over usb port
+* Clone the repository
 * Run install script
 
       chmod 777 install.sh
@@ -16,7 +19,7 @@ A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 
 * Install a payload
 
-      cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /boot/payload.dd
+      sudo cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /boot/payload.dd
 
 ### Resources:
 
