@@ -2,6 +2,11 @@
 
 A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 
+### Features:
+
+* Keyboard emulation
+* USB Flash Drive emulation
+
 ### Configuration
 
 * Run install script
