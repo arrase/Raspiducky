@@ -34,7 +34,7 @@ When Raspiducky boots for first time the configuration is exposed over usb emula
 
 * Run a payload on boot
 
-      sudo cat payloads-db/open_terminal/open_mint_terminal.dd payloads-db/backdoor/bind_shell.dd > onboot_payload/payload.dd
+      cat payloads-db/open_terminal/open_mint_terminal.dd payloads-db/backdoor/bind_shell.dd > onboot_payload/payload.dd
 
 * Flash drive options
 
