@@ -11,15 +11,34 @@ A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 
 * Flash Raspbian 
 * Login as pi, use a screen over HDMI and a keyboard over usb port
+* Connect the raspberry to internet over wifi
 * Clone the repository
+
+      git clone https://github.com/arrase/Raspiducky.git
+ 
 * Run install script
 
+      cd Raspiducky
       chmod 777 install.sh
       ./install.sh
 
-* Install a payload
+* Delete the install folder and reboot
 
-      sudo cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /boot/payload.dd
+      cd ..
+      rm -rf Raspiducky
+      sudo reboot
+
+### First boot
+
+When Raspiducky boots for first time the configuration is exposed over usb emulation
+
+* Run a payload on boot
+
+      sudo cat payloads-db/open_terminal/open_mint_terminal.dd payloads-db/backdoor/bind_shell.dd > onboot_payload/payload.dd
+
+* Flash drive options
+
+      vim etc/raspiducky.conf
 
 ### Resources:
 

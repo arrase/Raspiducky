@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. /etc/raspiducky/raspiducky.conf
+. /home/pi/config/etc/raspiducky.conf
 
 cd /sys/kernel/config/usb_gadget/
 mkdir -p g1
@@ -29,17 +29,24 @@ ln -s functions/hid.$N configs/c.$C/
 # End KEYBOARD
 
 # STORAGE
-if [ -e $STORAGE_FILE ]
+if [ $STORAGE_MODE != "none" ]
 then
-    [ -d $STORAGE_MOUNT ] || mkdir $STORAGE_MOUNT
-    mount -o loop,rw -t vfat $STORAGE_FILE $STORAGE_MOUNT
     mkdir -p functions/mass_storage.usb0
     echo 1 > functions/mass_storage.usb0/stall
     echo 0 > functions/mass_storage.usb0/lun.0/removable
     echo 0 > functions/mass_storage.usb0/lun.0/cdrom
     echo 0 > functions/mass_storage.usb0/lun.0/ro
     echo 0 > functions/mass_storage.usb0/lun.0/nofua
-    echo $STORAGE_FILE > functions/mass_storage.usb0/lun.0/file
+
+    if [ $STORAGE_MODE = "disk" ]
+    then
+        [ -d $STORAGE_MOUNT ] || mkdir $STORAGE_MOUNT
+        mount -o loop,rw -t vfat $STORAGE_FILE $STORAGE_MOUNT
+        echo $STORAGE_FILE > functions/mass_storage.usb0/lun.0/file
+    else
+        echo $STORAGE_CONFIG > functions/mass_storage.usb0/lun.0/file
+    fi
+
     ln -s functions/mass_storage.usb0 configs/c.$C/
 fi
 # End STORAGE
