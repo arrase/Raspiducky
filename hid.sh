@@ -38,14 +38,12 @@ then
     echo 0 > functions/mass_storage.usb0/lun.0/ro
     echo 0 > functions/mass_storage.usb0/lun.0/nofua
 
-    [ -d $STORAGE_MOUNT ] || mkdir $STORAGE_MOUNT
-
     if [ $STORAGE_MODE = "disk" ]
     then
+        [ -d $STORAGE_MOUNT ] || mkdir $STORAGE_MOUNT
         mount -o loop,rw -t vfat $STORAGE_FILE $STORAGE_MOUNT
         echo $STORAGE_FILE > functions/mass_storage.usb0/lun.0/file
     else
-        mount -o loop,rw -t vfat $STORAGE_CONFIG $STORAGE_MOUNT
         echo $STORAGE_CONFIG > functions/mass_storage.usb0/lun.0/file
     fi
 

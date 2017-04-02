@@ -1,6 +1,8 @@
 #!/bin/bash
 
 INSTALL_DIR=/home/pi
+USERID=1000
+GROUPID=1000
 FLASH_DISK_SIZE=100000 # 100MB
 
 # EXEC FILES
@@ -22,22 +24,23 @@ chmod 777 $INSTALL_DIR/run_payload.sh
 dd if=/dev/zero of=$INSTALL_DIR/.confdisk.img bs=1024 count=10000
 mkfs.vfat $INSTALL_DIR/.confdisk.img
 
-[ -d $INSTALL_DIR/ ] || mkdir $INSTALL_DIR/config
-sudo mount $INSTALL_DIR/.confdisk.img $INSTALL_DIR/config -o loop,rw
-sudo echo "$INSTALL_DIR/.confdisk.img  $INSTALL_DIR/config           vfat    defaults          0       2"
+[ -d $INSTALL_DIR/config ] || mkdir $INSTALL_DIR/config
+sudo mount $INSTALL_DIR/.confdisk.img $INSTALL_DIR/config -o loop,rw,uid=$USERID,gid=$GROUPID
 
-[ -d $INSTALL_DIR/config/etc ] || sudo mkdir $INSTALL_DIR/config/etc
-[ -f $INSTALL_DIR/config/etc/raspiducky.conf ] || sudo cp raspiducky.conf $INSTALL_DIR/config/etc/raspiducky.conf
+[ -d $INSTALL_DIR/config/etc ] || mkdir $INSTALL_DIR/config/etc
+[ -f $INSTALL_DIR/config/etc/raspiducky.conf ] || cp raspiducky.conf $INSTALL_DIR/config/etc/raspiducky.conf
 [ -d $INSTALL_DIR/config/payloads-db ] || cp -r payloads $INSTALL_DIR/config/payloads-db
 [ -d $INSTALL_DIR/config/onboot_payload ] || mkdir $INSTALL_DIR/config/onboot_payload
+echo "$INSTALL_DIR/.confdisk.img   $INSTALL_DIR/config    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
+sudo umount $INSTALL_DIR/config
 
 # BOOT CONFIG
 
-sudo echo "dtoverlay=dwc2" >> /boot/config.txt
-sudo echo "dwc2" >> /etc/modules
-sudo echo "libcomposite" >> /etc/modules
+echo "dtoverlay=dwc2" | sudo tee --append /boot/config.txt
+echo "dwc2" | sudo tee --append /etc/modules
+echo "libcomposite" | sudo tee --append /etc/modules
 
-cat /etc/rc.local | awk '/exit\ 0/ && c == 0 {c = 0; print "\n/home/pi/hid.sh\nsleep 3\n/home/pi/run_payload.sh\n"}; {print}' /etc/rc.local
+cat /etc/rc.local | sudo awk '/exit\ 0/ && c == 0 {c = 0; print "\n/home/pi/hid.sh\nsleep 3\n/home/pi/run_payload.sh\n"}; {print}' /etc/rc.local
 
 # FLASH DRIVE
 
