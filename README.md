@@ -19,7 +19,7 @@ A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 
 * Install a payload
 
-      sudo cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /boot/payload.dd
+      sudo cat payloads/open_terminal/open_mint_terminal.dd payloads/backdoor/bind_shell.dd > /home/pi/config/onboot_payload/payload.dd
 
 ### Resources:
 
