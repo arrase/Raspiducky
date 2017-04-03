@@ -37,8 +37,12 @@ class Raspiducky:
                     self.exec_code("enter")
                 elif (cmd[0] == "DELAY"):
                     time.sleep(float(cmd[1]) / 1000000.0)
-                elif (cmd[0] == "WINDOWS" or cmd[0] == "GUI"):
+                elif cmd[0] in ["WINDOWS", "GUI"]:
                     self.exec_code("left-meta " + cmd[1])
+                elif cmd[0] in ["MENU", "APP"]:
+                    self.exec_code("left-shift f10")
+                elif cmd[0] in ["DOWNARROW", "DOWN"]:
+                    self.exec_code("down")
 
 
 if __name__ == "__main__":
