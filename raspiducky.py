@@ -2,6 +2,7 @@
 
 import time
 import subprocess
+import argparse
 
 import keyboard_layouts.current as kb
 
