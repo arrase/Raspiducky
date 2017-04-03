@@ -6,6 +6,7 @@ A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 
 * Keyboard emulation
 * USB Flash Drive emulation
+* Expose configuration files over USB Flash disk emulation
 
 ### Configuration
 
