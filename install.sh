@@ -1,8 +1,10 @@
 #!/bin/bash
 
-INSTALL_DIR=/home/pi
+. ./raspiducky.conf
+
 ETC_DIR=/etc/raspiducky
 FLASH_DISK_SIZE=100000 # 100MB
+CONFIG_DISK_SIZE=10000 # 10MB
 
 # EXEC FILES
 
@@ -18,16 +20,16 @@ chmod 777 $INSTALL_DIR/run_payload.sh
 
 # APP CONFIG
 
-dd if=/dev/zero of=$INSTALL_DIR/.confdisk.img bs=1024 count=10000
-mkfs.vfat $INSTALL_DIR/.confdisk.img
+dd if=/dev/zero of=$STORAGE_CONFIG bs=1024 count=$CONFIG_DISK_SIZE
+mkfs.vfat $STORAGE_CONFIG
 
 [ -d $ETC_DIR ] || sudo mkdir $ETC_DIR
-sudo mount $INSTALL_DIR/.confdisk.img $ETC_DIR -o loop,rw
+sudo mount $STORAGE_CONFIG $ETC_DIR -o loop,rw
 
 [ -f $ETC_DIR/raspiducky.conf ] || sudo cp raspiducky.conf $ETC_DIR/raspiducky.conf
 [ -d $ETC_DIR/payloads-db ] || sudo cp -r payloads $ETC_DIR/payloads-db
 [ -d $ETC_DIR/onboot_payload ] || sudo mkdir $ETC_DIR/onboot_payload
-echo "$INSTALL_DIR/.confdisk.img   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
+echo "$STORAGE_CONFIG   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
 sudo umount $ETC_DIR
 
 # BOOT CONFIG
@@ -40,5 +42,5 @@ cat /etc/rc.local | sudo awk '/exit\ 0/ && c == 0 {c = 0; print "\n/home/pi/hid.
 
 # FLASH DRIVE
 
-dd if=/dev/zero of=$INSTALL_DIR/.usbdisk.img bs=1024 count=$FLASH_DISK_SIZE
-mkfs.vfat $INSTALL_DIR/.usbdisk.img
+dd if=/dev/zero of=$STORAGE_FILE bs=1024 count=$FLASH_DISK_SIZE
+mkfs.vfat $STORAGE_FILE
