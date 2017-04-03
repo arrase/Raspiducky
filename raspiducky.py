@@ -1,10 +1,13 @@
 #!/usr/bin/python
 
+import time
+import subprocess
+
 import keyboard_layouts.current as kb
 
 DEFDELAY=0
-KEYBOARD="/dev/hidg0 keyboard"
-MOUSE="/dev/hidg0 mouse"
+HID_DEV="/dev/hidg0"
+HID_BIN="./hid-gadget-test"
 PAYLOAD="payload2.dd"
 
 def getKBCode (char):
@@ -13,15 +16,22 @@ def getKBCode (char):
   except KeyError:
     return char.lower()
 
+def exec_code(code, code_type="keyboard"):
+    p1 = subprocess.Popen(["echo", code], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen([HID_BIN, HID_DEV, code_type], stdin=p1.stdout, stdout=subprocess.PIPE)
+    p2.communicate()
+
 with open(PAYLOAD) as f:
     for line in f:
-        cmd = line.split(' ',1)
-        # Discard empty lines
-        if (cmd[0] == "\n"):
-            continue
-        print(cmd)
-        if (cmd[0] == "STRING"):
+        cmd = line.replace('\n', '').replace('\r', '').split(' ',1)
+        # KEYBOARD
+        if (cmd[0] == ""):
+            continue # Discard empty lines
+        elif (cmd[0] == "STRING"):
             for c in cmd[1]:
-                kbcode = getKBCode(c)
-                print (kbcode)
+                exec_code(getKBCode(c))
+        elif (cmd[0] == "ENTER"):
+            exec_code("enter")
+        elif (cmd[0] == "DELAY"):
+            time.sleep(float(cmd[1])/1000000.0)
 

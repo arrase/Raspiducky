@@ -8,14 +8,12 @@ FLASH_DISK_SIZE=100000 # 100MB
 # EXEC FILES
 
 gcc hid-gadget-test.c -o $INSTALL_DIR/hid-gadget-test
-cp usleep $INSTALL_DIR/
-cp duckpi.sh $INSTALL_DIR/
 cp hid.sh $INSTALL_DIR/
 cp run_payload.sh $INSTALL_DIR
+cp raspiducky.py $INSTALL_DIR
 
 chmod 777 $INSTALL_DIR/hid-gadget-test
-chmod 777 $INSTALL_DIR/usleep
-chmod 777 $INSTALL_DIR/duckpi.sh
+chmod 777 $INSTALL_DIR/raspiducky.py
 chmod 777 $INSTALL_DIR/hid.sh
 chmod 777 $INSTALL_DIR/run_payload.sh
 
