@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ -f /home/pi/config/onboot_payload/payload.dd ]
+if [ -f /etc/raspiducky/onboot_payload/payload.dd ]
 then
-    python /home/pi/raspiducky.py
+    python /home/pi/raspiducky.py --payload /etc/raspiducky/onboot_payload/payload.dd
 fi

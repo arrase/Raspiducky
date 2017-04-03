@@ -1,8 +1,7 @@
 #!/bin/bash
 
 INSTALL_DIR=/home/pi
-USERID=1000
-GROUPID=1000
+ETC_DIR=/etc/raspiducky
 FLASH_DISK_SIZE=100000 # 100MB
 
 # EXEC FILES
@@ -22,15 +21,14 @@ chmod 777 $INSTALL_DIR/run_payload.sh
 dd if=/dev/zero of=$INSTALL_DIR/.confdisk.img bs=1024 count=10000
 mkfs.vfat $INSTALL_DIR/.confdisk.img
 
-[ -d $INSTALL_DIR/config ] || mkdir $INSTALL_DIR/config
-sudo mount $INSTALL_DIR/.confdisk.img $INSTALL_DIR/config -o loop,rw,uid=$USERID,gid=$GROUPID
+[ -d $ETC_DIR ] || sudo mkdir $ETC_DIR
+sudo mount $INSTALL_DIR/.confdisk.img $ETC_DIR -o loop,rw
 
-[ -d $INSTALL_DIR/config/etc ] || mkdir $INSTALL_DIR/config/etc
-[ -f $INSTALL_DIR/config/etc/raspiducky.conf ] || cp raspiducky.conf $INSTALL_DIR/config/etc/raspiducky.conf
-[ -d $INSTALL_DIR/config/payloads-db ] || cp -r payloads $INSTALL_DIR/config/payloads-db
-[ -d $INSTALL_DIR/config/onboot_payload ] || mkdir $INSTALL_DIR/config/onboot_payload
-echo "$INSTALL_DIR/.confdisk.img   $INSTALL_DIR/config    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
-sudo umount $INSTALL_DIR/config
+[ -f $ETC_DIR/raspiducky.conf ] || sudo cp raspiducky.conf $ETC_DIR/raspiducky.conf
+[ -d $ETC_DIR/payloads-db ] || sudo cp -r payloads $ETC_DIR/payloads-db
+[ -d $ETC_DIR/onboot_payload ] || sudo mkdir $ETC_DIR/onboot_payload
+echo "$INSTALL_DIR/.confdisk.img   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
+sudo umount $ETC_DIR
 
 # BOOT CONFIG
 
