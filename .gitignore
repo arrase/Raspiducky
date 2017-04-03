@@ -1,2 +1,4 @@
 keyboard_layouts/*.pyc
 *.pyc
+.idea
+.idea/*
