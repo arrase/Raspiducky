@@ -22,7 +22,7 @@ class Raspiducky:
         p2 = subprocess.Popen([HID_BIN, HID_DEV, code_type], stdin=p1.stdout, stdout=subprocess.PIPE)
         p2.communicate()
     
-    def run(payload)
+    def run(self, payload):
         with open(payload) as f:
             for line in f:
                 cmd = line.replace('\n', '').replace('\r', '').split(' ',1)
