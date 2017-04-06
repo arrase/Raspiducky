@@ -46,9 +46,7 @@ class Raspiducky:
             return "escape"
         elif (cmd[0] == "PRINTSCREEN"):
             return "print"
-        elif cmd[0] in ["CAPSLOCK", "DELETE", "END", "HOME", "INSERT", "NUMLOCK", "PAGEUP", "PAGEDOWN",
-                        "SCROLLLOCK", "SPACE", "TAB", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
-                        "F10", "F11", "F12"]:
+        else:
             return cmd[0].lower()
 
     def run(self, payload):
@@ -76,13 +74,17 @@ class Raspiducky:
                     self.last_cmd = "left-shift " + self.parse_cmd(cmd[1].split(' ', 1))
                     self.exec_code(self.last_cmd)
                 elif cmd[0] in ["CONTROL", "CTRL"]:
-                    self.last_cmd = "left-ctrl " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.last_cmd = "left-ctrl"
+                    if len(cmd) > 1:
+                        self.last_cmd += " " + self.parse_cmd(cmd[1].split(' ', 1))
                     self.exec_code(self.last_cmd)
                 elif (cmd[0] == "CTRL-SHIFT"):
                     self.last_cmd = "left-ctrl left-shift " + self.parse_cmd(cmd[1].split(' ', 1))
                     self.exec_code(self.last_cmd)
                 elif (cmd[0] == "ALT"):
-                    self.last_cmd = "left-alt " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.last_cmd = "left-alt"
+                    if len(cmd) > 1:
+                        self.last_cmd = " " + self.parse_cmd(cmd[1].split(' ', 1))
                     self.exec_code(self.last_cmd)
                 elif (cmd[0] == "ALT-SHIFT"):
                     self.last_cmd = "left-shift left-alt"
