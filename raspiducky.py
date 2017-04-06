@@ -13,7 +13,6 @@ class Raspiducky:
     hid_bin = "./hid-gadget-test"
     last_cmd = ""
     last_string = ""
-    run_cmd = True
 
     def getKBCode(self, char):
         try:
@@ -60,33 +59,35 @@ class Raspiducky:
                 if (cmd[0] == ""):
                     continue  # Discard empty lines
                 elif (cmd[0] == "STRING"):
-                    self.run_cmd = False
                     self.last_cmd = "STRING"
                     self.last_string = cmd[1]
                     for c in cmd[1]:
                         self.exec_code(self.getKBCode(c))
                 elif (cmd[0] == "DELAY"):
-                    self.run_cmd = False
                     self.last_cmd = "UNS"
                     sleep(float(cmd[1]) / 1000000.0)
                 elif cmd[0] in ["DEFAULTDELAY", "DEFAULT_DELAY"]:
-                    self.run_cmd = False
                     self.last_cmd = "UNS"
                     self.def_delay = float(cmd[1]) / 1000000.0
                 elif (cmd[0] == "REM"):
+                    self.last_cmd = "REM"
                     print(cmd[1])
                 elif (cmd[0] == "SHIFT"):
                     self.last_cmd = "left-shift " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.exec_code(self.last_cmd)
                 elif cmd[0] in ["CONTROL", "CTRL"]:
                     self.last_cmd = "left-ctrl " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.exec_code(self.last_cmd)
                 elif (cmd[0] == "CTRL-SHIFT"):
                     self.last_cmd = "left-ctrl left-shift " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.exec_code(self.last_cmd)
                 elif (cmd[0] == "ALT"):
                     self.last_cmd = "left-alt " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.exec_code(self.last_cmd)
                 elif (cmd[0] == "ALT-SHIFT"):
                     self.last_cmd = "left-shift left-alt"
+                    self.exec_code(self.last_cmd)
                 elif (cmd[0] == "REPEAT"):
-                    self.run_cmd = False
                     if self.last_cmd not in ["UNS", "REM", ""]:
                         for time in xrange(int(cmd[1])):
                             if (self.last_cmd == "STRING"):
@@ -96,12 +97,7 @@ class Raspiducky:
                                 self.exec_code(self.last_cmd)
                 else:
                     self.last_cmd = self.parse_cmd(cmd)
-
-                # Run a new command
-                if (self.run_cmd):
                     self.exec_code(self.last_cmd)
-
-                self.run_cmd = True  # reset the value
 
                 sleep(self.def_delay)
 
