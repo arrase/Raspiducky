@@ -72,7 +72,7 @@ class Raspiducky:
                 elif cmd[0] in ["DEFAULTDELAY", "DEFAULT_DELAY"]:
                     self.run_cmd = False
                     self.last_cmd = "UNS"
-                    def_delay = float(cmd[1]) / 1000000.0
+                    self.def_delay = float(cmd[1]) / 1000000.0
                 elif (cmd[0] == "REM"):
                     print(cmd[1])
                 elif (cmd[0] == "SHIFT"):
