@@ -89,6 +89,12 @@ class Raspiducky:
                 elif (cmd[0] == "ALT-SHIFT"):
                     self.last_cmd = "left-shift left-alt"
                     self.exec_code(self.last_cmd)
+                elif (cmd[0] == "CTRL-ALT"):
+                    self.last_cmd = "left-ctrl left-alt " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.exec_code(self.last_cmd)
+                elif (cmd[0] == "CTRL-SHIFT"):
+                    self.last_cmd = "left-ctrl left-shift " + self.parse_cmd(cmd[1].split(' ', 1))
+                    self.exec_code(self.last_cmd)
                 elif (cmd[0] == "REPEAT"):
                     if self.last_cmd not in ["UNS", "REM", ""]:
                         for time in xrange(int(cmd[1])):
