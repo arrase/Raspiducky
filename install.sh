@@ -32,7 +32,7 @@ sudo mount $STORAGE_CONFIG $ETC_DIR -o loop,rw
 [ -d $ETC_DIR/onboot_payload ] || sudo mkdir $ETC_DIR/onboot_payload
 
 echo "$STORAGE_CONFIG   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
-sudo ln -s $ETC_DIR/keyboard_layouts/db/QWERTY-ES_es.py $ETC_DIR/keyboard_layouts/current.py
+sudo cp $ETC_DIR/keyboard_layouts/db/QWERTY-ES_es.py $ETC_DIR/keyboard_layouts/current.py
 
 # BOOT CONFIG
 
