@@ -38,7 +38,7 @@ echo "dtoverlay=dwc2" | sudo tee --append /boot/config.txt
 echo "dwc2" | sudo tee --append /etc/modules
 echo "libcomposite" | sudo tee --append /etc/modules
 
-cat /etc/rc.local | sudo awk '/exit\ 0/ && c == 0 {c = 0; print "\n/home/pi/hid.sh\nsleep 3\n/home/pi/run_payload.sh\n"}; {print}' /etc/rc.local
+cat /etc/rc.local | awk '/exit\ 0/ && c == 0 {c = 0; print "\n/home/pi/hid.sh\nsleep 3\n/home/pi/run_payload.sh\n"}; {print}'| sudo tee /etc/rc.local
 
 # FLASH DRIVE
 
