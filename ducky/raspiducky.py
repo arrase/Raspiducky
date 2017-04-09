@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from RaspiDucky.Daemonize import Daemonize
-from RaspiDucky.Ducky import Ducky
+from RaspiDucky.RunPayload import RunPayload
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -23,7 +23,7 @@ if __name__ == "__main__":
         else:
             daemon.restart()
     elif args.payload is not None:
-        ducky = Ducky()
+        ducky = RunPayload()
         ducky.run(args.payload)
     else:
         parser.print_help()
