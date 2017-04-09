@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. /home/pi/config/etc/raspiducky.conf
+. /etc/raspiducky/raspiducky.conf
 
 cd /sys/kernel/config/usb_gadget/
 mkdir -p g1
