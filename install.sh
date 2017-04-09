@@ -28,9 +28,11 @@ sudo mount $STORAGE_CONFIG $ETC_DIR -o loop,rw
 
 [ -f $ETC_DIR/raspiducky.conf ] || sudo cp raspiducky.conf $ETC_DIR/raspiducky.conf
 [ -d $ETC_DIR/payloads-db ] || sudo cp -r payloads $ETC_DIR/payloads-db
+[ -d $ETC_DIR/keyboard_layouts ] || sudo cp -r keyboard_layouts $ETC_DIR/keyboard_layouts
 [ -d $ETC_DIR/onboot_payload ] || sudo mkdir $ETC_DIR/onboot_payload
+
 echo "$STORAGE_CONFIG   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
-sudo umount $ETC_DIR
+sudo ln -s $ETC_DIR/keyboard_layouts/db/QWERTY-ES_es.py $ETC_DIR/keyboard_layouts/current.py
 
 # BOOT CONFIG
 

@@ -2,9 +2,12 @@
 
 import argparse
 import subprocess
+import sys
 from time import sleep
 
-import keyboard_layouts.current as kb
+sys.path.append('/etc/raspiducky/keyboard_layouts')
+
+import current as kb
 
 
 class Raspiducky:
