@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. ./raspiducky.conf
+. etc/raspiducky.conf
 
 ETC_DIR=/etc/raspiducky
 FLASH_DISK_SIZE=100000 # 100MB

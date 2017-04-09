@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-import argparse
 import subprocess
 import sys
 from time import sleep
@@ -10,7 +9,7 @@ sys.path.append('/etc/raspiducky/keyboard_layouts')
 import current as kb
 
 
-class Raspiducky:
+class Ducky:
     def_delay = 0
     hid_dev = "/dev/hidg0"
     hid_bin = "./hid-gadget-test"
@@ -114,12 +113,3 @@ class Raspiducky:
                     self.exec_code(self.last_cmd)
 
                 sleep(self.def_delay)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--payload', '-p', required=True, help='Path to payload file')
-    args = parser.parse_args()
-
-    ducky = Raspiducky()
-    ducky.run(args.payload)
