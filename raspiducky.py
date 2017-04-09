@@ -32,7 +32,10 @@ class Raspiducky:
         if (cmd[0] == "ENTER"):
             return "enter"
         elif cmd[0] in ["WINDOWS", "GUI"]:
-            return "left-meta " + cmd[1].lower()
+            if len(cmd) > 1:
+                return "left-meta " + cmd[1].lower()
+            else:
+                return "left-meta"
         elif cmd[0] in ["MENU", "APP"]:
             return "left-shift f10"
         elif cmd[0] in ["DOWNARROW", "DOWN"]:
