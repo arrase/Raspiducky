@@ -1,15 +1,17 @@
 from bluetooth import *
 
 from RaspiDucky.DuckyScript import DuckyScript
+from RaspiDucky.Configuration import Config
 
 
 class RFCommServer:
     _server_sock = None
-    _uuid = "94f39d29-7d6d-437d-973b-fba39e49d4ee"
+    _config = None
     _ducky = None
     _client_sock = None
 
     def __init__(self):
+        self._config = Config()
         self._ducky = DuckyScript()
         self._server_sock = BluetoothSocket(RFCOMM)
         self._server_sock.bind(("", PORT_ANY))
@@ -17,8 +19,8 @@ class RFCommServer:
 
     def advertise(self):
         advertise_service(self._server_sock, "RaspiDucky",
-                          service_id=self._uuid,
-                          service_classes=[self._uuid, SERIAL_PORT_CLASS],
+                          service_id=self._config.get_uuid(),
+                          service_classes=[self._config.get_uuid(), SERIAL_PORT_CLASS],
                           profiles=[SERIAL_PORT_PROFILE])
 
     def run(self):

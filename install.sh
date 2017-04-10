@@ -33,6 +33,7 @@ sudo mkfs.vfat $CONFIG_DISK
 sudo mount $CONFIG_DISK $ETC_DIR -o loop,rw
 
 [ -f $ETC_DIR/raspiducky.conf ] || sudo cp etc/raspiducky/raspiducky.conf $ETC_DIR/raspiducky.conf
+[ -f $ETC_DIR/bluetooth.conf ] || sudo cp etc/raspiducky/bluetooth.conf $ETC_DIR/bluetooth.conf
 [ -d $ETC_DIR/payloads-db ] || sudo cp -r etc/raspiducky/payloads $ETC_DIR/payloads-db
 [ -d $ETC_DIR/keyboard_layouts ] || sudo cp -r etc/raspiducky/keyboard_layouts $ETC_DIR/keyboard_layouts
 [ -d $ETC_DIR/onboot_payload ] || sudo mkdir $ETC_DIR/onboot_payload
