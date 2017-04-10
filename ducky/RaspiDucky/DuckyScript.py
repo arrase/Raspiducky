@@ -12,7 +12,7 @@ import current as kb
 class DuckyScript:
     _def_delay = 0
     _hid_dev = "/dev/hidg0"
-    _hid_bin = "hid-gadget-test"
+    _hid_bin = "/usr/bin/hid-gadget"
     _last_cmd = ""
     _last_string = ""
 

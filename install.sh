@@ -12,11 +12,11 @@ sudo apt update
 sudo apt install python-bluez
 
 # EXEC FILES
-sudo gcc hid-gadget-test.c -o $BIN_DIR/hid-gadget-test
+sudo gcc hid-gadget-test.c -o $BIN_DIR/hid-gadget
 sudo cp scripts/hid.sh $BIN_DIR/
 sudo cp scripts/run_payload.sh $BIN_DIR/
 
-sudo chmod 777 $BIN_DIR/hid-gadget-test
+sudo chmod 777 $BIN_DIR/hid-gadget
 sudo chmod 777 $BIN_DIR/hid.sh
 sudo chmod 777 $BIN_DIR/run_payload.sh
 
