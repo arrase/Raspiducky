@@ -26,11 +26,13 @@ case $1 in
         start)
                 log_daemon_msg "Starting RaspiDucky daemon" "RaspiDucky"
                 test -e $PID && log_daemon_msg "RaspiDucky pid exist??" && rm $PID
+                /bin/hciconfig hci0 piscan
                 $DAEMON --daemon start
                 log_end_msg 0
                 ;;
         stop)
                 log_daemon_msg "Stopping RaspiDucky daemon" "RaspiDucky"
+                /bin/hciconfig hci0 noscan
                 $DAEMON --daemon stop
                 log_end_msg 0
                 ;;
