@@ -20,6 +20,9 @@ sudo chmod 777 $BIN_DIR/hid-gadget
 sudo chmod 777 $BIN_DIR/hid.sh
 sudo chmod 777 $BIN_DIR/run_payload.sh
 
+# FIX BLUETOOTH FROM: https://gist.github.com/arrase/5ed707a3070ef527743d12c971dae6ef
+sudo sed 's/bluetooth\/bluetoothd/bluetooth\/bluetoothd\ --compat/' -i /lib/systemd/system/bluetooth.service
+
 # APP CONFIG
 [ -d $VAR_DIR ] || sudo mkdir $VAR_DIR
 
