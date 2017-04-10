@@ -2,8 +2,8 @@
 
 ### BEGIN INIT INFO
 # Provides:        RaspiDucky
-# Required-Start:  $local_fs $syslog
-# Required-Stop:   $local_fs $syslog
+# Required-Start:  $bluetooth
+# Required-Stop:   $bluetooth
 # Default-Start:   2 3 4 5
 # Default-Stop:    1
 # Short-Description: Start RaspiDucky daemon
