@@ -7,6 +7,7 @@ A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
 * Keyboard emulation
 * USB Flash Drive emulation
 * Expose configuration files over USB Flash disk emulation
+* Run payloads over bluetooth
 
 ### Configuration
 
@@ -40,6 +41,24 @@ When Raspiducky boots for first time the configuration is exposed over usb emula
 * Flash drive options
 
       vim etc/raspiducky.conf
+      
+### Help
+
+      # raspiducky.py 
+      
+      usage: raspiducky.py [-h] [--payload PAYLOAD] [--remote] [--address ADDRESS]
+                     [--daemon {start,stop,restart}]
+
+      optional arguments:
+          -h, --help            show this help message and exit
+          --payload PAYLOAD, -p PAYLOAD
+                                Path to payload file
+          --remote, -r          Run payload on remote device
+          --address ADDRESS, -a ADDRESS
+                                Remote device address
+          --daemon {start,stop,restart}, -d {start,stop,restart}
+                                Run as daemon
+
 
 ### Resources:
 
