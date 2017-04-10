@@ -7,6 +7,10 @@ ETC_DIR=/etc/raspiducky
 FLASH_DISK_SIZE=100000 # 100MB
 CONFIG_DISK_SIZE=10000 # 10MB
 
+# DEPENDENCIES
+sudo apt update
+sudo apt install python-bluez
+
 # EXEC FILES
 sudo gcc hid-gadget-test.c -o $BIN_DIR/hid-gadget-test
 sudo cp scripts/hid.sh $BIN_DIR/
