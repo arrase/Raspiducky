@@ -15,7 +15,7 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin
 
 . /etc/raspiducky/raspiducky.conf
 
-DAEMON=/usr/bin/raspiducky
+DAEMON=/usr/bin/raspiducky.py
 PID=/var/run/RaspiDucky.pid
 
 test -x $DAEMON || exit 5
