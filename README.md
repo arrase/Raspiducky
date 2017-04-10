@@ -53,7 +53,7 @@ When Raspiducky boots for first time the configuration is exposed over usb emula
           -h, --help            show this help message and exit
           --payload PAYLOAD, -p PAYLOAD
                                 Path to payload file
-          --remote, -r          Run on remote device
+          --remote, -r          Run payload on remote device
           --address ADDRESS, -a ADDRESS
                                 Remote device address
           --daemon {start,stop,restart}, -d {start,stop,restart}

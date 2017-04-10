@@ -1,7 +1,7 @@
 from bluetooth import *
 
-from RaspiDucky.DuckyScript import DuckyScript
 from RaspiDucky.Configuration import Config
+from RaspiDucky.DuckyScript import DuckyScript
 
 
 class RFCommServer:

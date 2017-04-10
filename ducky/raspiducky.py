@@ -9,7 +9,7 @@ from RaspiDucky.RunPayload import RunPayload
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--payload', '-p', required=False, help='Path to payload file')
-    parser.add_argument('--remote', '-r', required=False, help='Run on remote device', action="store_true")
+    parser.add_argument('--remote', '-r', required=False, help='Run payload on remote device', action="store_true")
     parser.add_argument('--address', '-a', required=False, help='Remote device address')
     parser.add_argument('--daemon', '-d', choices=['start', 'stop', 'restart'], required=False,
                         help='Run as daemon')
