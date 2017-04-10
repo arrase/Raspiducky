@@ -1,4 +1,4 @@
-etc/keyboard_layouts/*.pyc
+etc/raspiducky/keyboard_layouts/*.pyc
 *.pyc
 .idea
 .idea/*

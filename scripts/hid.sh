@@ -44,7 +44,7 @@ then
         mount -o loop,rw -t vfat $STORAGE_FILE $STORAGE_MOUNT
         echo $STORAGE_FILE > functions/mass_storage.usb0/lun.0/file
     else
-        echo $STORAGE_CONFIG > functions/mass_storage.usb0/lun.0/file
+        echo $CONFIG_DISK > functions/mass_storage.usb0/lun.0/file
     fi
 
     ln -s functions/mass_storage.usb0 configs/c.$C/

@@ -19,10 +19,8 @@ setup(
 
     description="A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero W",
 
-    # data_files=[
-    #     ('/etc/init.d', ['etc/init.d/hiddenbackupd']),
-    #     ('/etc/', ['etc/hiddenbackupd.conf']),
-    #     ('/usr/sbin', ['hiddenbackupd'])
-    # ],
-    # requires=['bluez']
+    data_files=[
+        ('/usr/sbin', ['raspiducky.py'])
+    ],
+    requires=['pybluez']
 )
