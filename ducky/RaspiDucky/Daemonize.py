@@ -4,12 +4,15 @@ import sys
 import time
 from signal import SIGTERM
 
+from RaspiDucky.RFCommServer import RFCommServer
+
 
 class Daemonize:
-    _pidfile = '/var/run/HDBackup.pid'
+    _pidfile = '/var/run/RaspiDucky.pid'
     _stdin = '/dev/null'
     _stdout = '/dev/null'
     _stderr = '/dev/null'
+    _server = None
 
     def daemonize(self):
         # do the UNIX double-fork magic
@@ -110,4 +113,8 @@ class Daemonize:
         self.start()
 
     def run(self):
-        pass
+        self._server = RFCommServer()
+        atexit.register(self._server.stop)
+        self._server.advertise()
+        while True:
+            self._server.run()

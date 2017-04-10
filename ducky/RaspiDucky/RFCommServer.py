@@ -1,36 +1,38 @@
 from bluetooth import *
 
+from RaspiDucky.DuckyScript import DuckyScript
+
 
 class RFCommServer:
-    def run(self):
-        server_sock = BluetoothSocket(RFCOMM)
-        server_sock.bind(("", PORT_ANY))
-        server_sock.listen(1)
+    _server_sock = None
+    _uuid = "94f39d29-7d6d-437d-973b-fba39e49d4ee"
+    _ducky = None
+    _client_sock = None
 
-        port = server_sock.getsockname()[1]
+    def __init__(self):
+        self._ducky = DuckyScript()
+        self._server_sock = BluetoothSocket(RFCOMM)
+        self._server_sock.bind(("", PORT_ANY))
+        self._server_sock.listen(1)
 
-        uuid = "94f39d29-7d6d-437d-973b-fba39e49d4ee"
-
-        advertise_service(server_sock, "RaspiDucky",
-                          service_id=uuid,
-                          service_classes=[uuid, SERIAL_PORT_CLASS],
+    def advertise(self):
+        advertise_service(self._server_sock, "RaspiDucky",
+                          service_id=self._uuid,
+                          service_classes=[self._uuid, SERIAL_PORT_CLASS],
                           profiles=[SERIAL_PORT_PROFILE])
 
-        print("Waiting for connection on RFCOMM channel %d" % port)
-
-        client_sock, client_info = server_sock.accept()
-        print("Accepted connection from ", client_info)
+    def run(self):
+        self._client_sock, client_info = self._server_sock.accept()
 
         try:
             while True:
-                data = client_sock.recv(1024)
+                data = self._client_sock.recv(1024)
                 if len(data) == 0: break
-                print("received [%s]" % data)
+                self._ducky.run(data.replace('\n', '').replace('\r', '').split(' ', 1))
         except IOError:
             pass
 
-        print("disconnected")
+        self._client_sock.close()
 
-        client_sock.close()
-        server_sock.close()
-        print("all done")
+    def stop(self):
+        self._server_sock.close()

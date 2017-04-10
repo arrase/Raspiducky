@@ -23,5 +23,6 @@ setup(
     #     ('/etc/init.d', ['etc/init.d/hiddenbackupd']),
     #     ('/etc/', ['etc/hiddenbackupd.conf']),
     #     ('/usr/sbin', ['hiddenbackupd'])
-    # ]
+    # ],
+    # requires=['bluez']
 )
