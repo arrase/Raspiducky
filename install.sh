@@ -42,7 +42,7 @@ echo "dtoverlay=dwc2" | sudo tee --append /boot/config.txt
 echo "dwc2" | sudo tee --append /etc/modules
 echo "libcomposite" | sudo tee --append /etc/modules
 
-cat /etc/rc.local | awk '/exit\ 0/ && c == 0 {c = 0; print "\n/usr/bin/hid.sh\nsleep 3\n/usr/bin/run_payload.sh\n"}; {print}'| sudo tee /etc/rc.local
+awk '/exit\ 0/ && c == 0 {c = 0; print "\n/usr/bin/hid.sh\nsleep 3\n/usr/bin/run_payload.sh\n"}; {print}' /etc/rc.local | sudo tee /etc/rc.local
 
 # FLASH DRIVE
 sudo dd if=/dev/zero of=$STORAGE_FILE bs=1024 count=$FLASH_DISK_SIZE
