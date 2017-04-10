@@ -26,12 +26,12 @@ case $1 in
         start)
                 log_daemon_msg "Starting RaspiDucky daemon" "RaspiDucky"
                 test -e $PID && log_daemon_msg "RaspiDucky pid exist??" && rm $PID
-                exec $DAEMON --daemon start
+                $DAEMON --daemon start
                 log_end_msg 0
                 ;;
         stop)
                 log_daemon_msg "Stopping RaspiDucky daemon" "RaspiDucky"
-                exec $DAEMON --daemon stop
+                $DAEMON --daemon stop
                 log_end_msg 0
                 ;;
         restart)
