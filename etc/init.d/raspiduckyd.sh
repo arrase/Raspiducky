@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 ### BEGIN INIT INFO
 # Provides:        RaspiDucky
@@ -20,7 +20,7 @@ PID=/var/run/RaspiDucky.pid
 
 test -x $DAEMON || exit 5
 
-[ $RUN_AS_DAEMON == true ] || exit 0
+[ $RUN_AS_DAEMON == "Yes" ] || exit 0
 
 case $1 in
         start)
