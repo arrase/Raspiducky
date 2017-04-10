@@ -9,7 +9,7 @@ from RaspiDucky.RunPayload import RunPayload
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--payload', '-p', required=False, help='Path to payload file')
-    parser.add_argument('--daemon', '-d', default='start', choices=['start', 'stop', 'restart'], required=False,
+    parser.add_argument('--daemon', '-d', choices=['start', 'stop', 'restart'], required=False,
                         help='Run as daemon')
 
     args = parser.parse_args()
