@@ -52,11 +52,6 @@ awk '/exit\ 0/ && c == 0 {c = 0; print "\n/usr/bin/hid.sh\nsleep 3\n/usr/bin/run
 sudo dd if=/dev/zero of=$STORAGE_FILE bs=1024 count=$FLASH_DISK_SIZE
 sudo mkfs.vfat $STORAGE_FILE
 
-# INIT SCRIPT
-sudo cp etc/init.d/raspiduckyd.sh /etc/init.d/raspiduckyd
-sudo chmod 777 /etc/init.d/raspiduckyd
-sudo update-rc.d raspiduckyd defaults
-
 # INSTALL RASPIDUCKY
 cd ducky
 sudo python setup.py install
