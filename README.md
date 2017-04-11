@@ -1,6 +1,6 @@
 # Raspiducky
 
-A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero
+A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero W
 
 ### Features:
 
