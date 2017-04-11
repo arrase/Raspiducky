@@ -2,9 +2,9 @@
 
 ### BEGIN INIT INFO
 # Provides:        RaspiDucky
-# Required-Start:  $local_fs
-# Required-Stop:   $local_fs
-# Default-Start:   2 3 4 5
+# Required-Start:  $all
+# Required-Stop:
+# Default-Start:   S 2 3 4 5
 # Default-Stop:    1
 # Short-Description: Start RaspiDucky daemon
 ### END INIT INFO
