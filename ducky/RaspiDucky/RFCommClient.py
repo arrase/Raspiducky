@@ -32,6 +32,7 @@ class RFCommClient:
 
         with open(payload) as f:
             for line in f:
+                sock.send(struct.pack('!I', len(line)))
                 sock.send(line)
 
         sock.close()
