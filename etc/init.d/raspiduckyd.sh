@@ -2,7 +2,7 @@
 
 ### BEGIN INIT INFO
 # Provides:        RaspiDucky
-# Required-Start:  $local_fs
+# Required-Start:  $bluetooth
 # Required-Stop:
 # Default-Start:   S 2 3 4 5
 # Default-Stop:    1
