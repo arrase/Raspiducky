@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from RaspiDucky.DuckyScript import DuckyScript
 from RaspiDucky.RFCommClient import RFCommClient
 

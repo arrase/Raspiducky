@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import subprocess
 import sys
 from time import sleep
