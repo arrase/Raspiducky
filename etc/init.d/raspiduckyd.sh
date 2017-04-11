@@ -2,8 +2,8 @@
 
 ### BEGIN INIT INFO
 # Provides:        RaspiDucky
-# Required-Start:  $local_fs $bluetooth
-# Required-Stop:   $local_fs $bluetooth
+# Required-Start:  $local_fs
+# Required-Stop:   $local_fs
 # Default-Start:   2 3 4 5
 # Default-Stop:    1
 # Short-Description: Start RaspiDucky daemon
@@ -27,18 +27,21 @@ case $1 in
                 log_daemon_msg "Starting RaspiDucky daemon" "RaspiDucky"
                 test -e $PID && log_daemon_msg "RaspiDucky pid exist??" && rm $PID
                 /bin/hciconfig hci0 piscan
-                $DAEMON --daemon start
+                exec $DAEMON -d start
                 log_end_msg 0
+                exit 0
                 ;;
         stop)
                 log_daemon_msg "Stopping RaspiDucky daemon" "RaspiDucky"
                 /bin/hciconfig hci0 noscan
-                $DAEMON --daemon stop
+                exec $DAEMON -d stop
                 log_end_msg 0
+                exit 0
                 ;;
         restart)
                 log_daemon_msg "Restart RaspiDucky daemon" "RaspiDucky"
-                $DAEMON --daemon restart
+                exec $DAEMON -d restart
+                exit 0
                 ;;
         *)
                 echo "Usage: $0 {start|stop|restart}"

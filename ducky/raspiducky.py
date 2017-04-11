@@ -18,12 +18,12 @@ if __name__ == "__main__":
 
     if args.daemon is not None:
         daemon = Daemonize()
-        if args.daemon == 'start':
-            daemon.start()
+        if args.daemon == 'restart':
+            daemon.restart()
         elif args.daemon == 'stop':
             daemon.stop()
         else:
-            daemon.restart()
+            daemon.start()
     elif args.payload is not None:
         ducky = RunPayload()
         ducky.run(payload=args.payload, remote=args.remote, address=args.address)
