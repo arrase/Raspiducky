@@ -31,8 +31,7 @@ class RFCommServer:
                 lengthbuf = self._client_sock.recv(4)
                 length, = struct.unpack('!I', lengthbuf)
                 data = self._client_sock.recv(length)
-                if len(data) == 0: break
-                self._ducky.run(data.replace('\n', '').replace('\r', '').split(' ', 1))
+                self._ducky.run(data.split(' ', 1))
         except IOError:
             pass
 
