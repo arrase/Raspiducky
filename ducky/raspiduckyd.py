@@ -13,6 +13,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     daemon = Daemonize()
+
     if args.start:
         daemon.start()
     elif args.stop:
