@@ -20,8 +20,8 @@ setup(
     description="A Keyboard emulator like Rubber Ducky build over Raspberry Pi Zero W",
 
     data_files=[
-        ('/usr/bin', ['raspiducky-cli.py']),
-        ('/usr/bin', ['raspiduckyd.py'])
+        ('/usr/bin', ['raspiducky.py']),
+        ('/usr/bin', ['duckyd.py'])
     ],
     requires=['pybluez']
 )
