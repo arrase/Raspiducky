@@ -1,6 +1,5 @@
-from sys import exit
-
 import ConfigParser
+from sys import exit
 
 
 class Config:
