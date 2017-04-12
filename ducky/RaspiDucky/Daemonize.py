@@ -102,7 +102,8 @@ class Daemonize:
                 if os.path.exists(self._pidfile):
                     os.remove(self._pidfile)
             else:
-                print str(err)
+                print
+                str(err)
                 sys.exit(1)
 
     def restart(self):
