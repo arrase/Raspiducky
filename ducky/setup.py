@@ -21,7 +21,7 @@ setup(
 
     data_files=[
         ('/usr/bin', ['raspiducky-cli.py'])
-        ('/usr/bin', ['raspiducky-daemon.py'])
+        ('/usr/bin', ['raspiduckyd.py'])
     ],
     requires=['pybluez']
 )
