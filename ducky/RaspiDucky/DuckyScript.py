@@ -49,8 +49,10 @@ class DuckyScript:
             return "escape"
         elif (cmd[0] == "PRINTSCREEN"):
             return "print"
+        elif cmd[0].isupper():
+            return "left-shift " + cmd[0].lower()
         else:
-            return cmd[0].lower()
+            return cmd[0]
 
     def run(self, cmd):
         if (cmd[0] == "STRING"):
