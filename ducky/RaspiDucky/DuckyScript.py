@@ -18,7 +18,10 @@ class DuckyScript:
         try:
             return kb.KEYBOARD_LAYOUT[char]
         except KeyError:
-            return char.lower()
+            if char.isupper():
+                return "left-shift " + char.lower()
+            else:
+                return char.lower()
 
     def _exec_code(self, code, code_type="keyboard"):
         p1 = subprocess.Popen(["echo", code], stdout=subprocess.PIPE)
@@ -49,10 +52,8 @@ class DuckyScript:
             return "escape"
         elif (cmd[0] == "PRINTSCREEN"):
             return "print"
-        elif cmd[0].isupper():
-            return "left-shift " + cmd[0].lower()
         else:
-            return cmd[0]
+            return cmd[0].lower()
 
     def run(self, cmd):
         if (cmd[0] == "STRING"):
