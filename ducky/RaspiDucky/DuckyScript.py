@@ -18,7 +18,10 @@ class DuckyScript:
         try:
             return kb.KEYBOARD_LAYOUT[char]
         except KeyError:
-            return char.lower()
+            if char.isupper():
+                return "left-shift " + char.lower()
+            else:
+                return char.lower()
 
     def _exec_code(self, code, code_type="keyboard"):
         p1 = subprocess.Popen(["echo", code], stdout=subprocess.PIPE)
@@ -60,10 +63,10 @@ class DuckyScript:
                 self._exec_code(self._getKBCode(c))
         elif (cmd[0] == "DELAY"):
             self._last_cmd = "UNS"
-            sleep(float(cmd[1]) / 1000000.0)
+            sleep(float(cmd[1]) / 1000.0)
         elif cmd[0] in ["DEFAULTDELAY", "DEFAULT_DELAY"]:
             self._last_cmd = "UNS"
-            self._def_delay = float(cmd[1]) / 1000000.0
+            self._def_delay = float(cmd[1]) / 1000.0
         elif (cmd[0] == "REM"):
             self._last_cmd = "REM"
             print(cmd[1])
