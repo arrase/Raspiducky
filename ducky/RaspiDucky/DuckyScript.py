@@ -21,7 +21,7 @@ class DuckyScript:
             if char.isupper():
                 return "left-shift " + char.lower()
             else:
-                return char.lower()
+                return char
 
     def _exec_code(self, code, code_type="keyboard"):
         p1 = subprocess.Popen(["echo", code], stdout=subprocess.PIPE)
