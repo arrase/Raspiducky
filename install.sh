@@ -37,8 +37,8 @@ grep bluetoothd\ --compat /lib/systemd/system/bluetooth.service || sudo sed 's/b
 [ -d $ETC_DIR/keyboard_layouts ] || sudo cp -r etc/raspiducky/keyboard_layouts $ETC_DIR/keyboard_layouts
 [ -d $ETC_DIR/onboot_payload ] || sudo mkdir $ETC_DIR/onboot_payload
 
-echo "$CONFIG_DISK   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab
-sudo cp $ETC_DIR/keyboard_layouts/db/QWERTY-ES_es.py $ETC_DIR/keyboard_layouts/current.py
+grep $CONFIG_DISK /etc/fstab || (echo "$CONFIG_DISK   $ETC_DIR    vfat    loop,rw          0       2" | sudo tee --append /etc/fstab)
+[ -f $ETC_DIR/keyboard_layouts/current.py ] || sudo cp $ETC_DIR/keyboard_layouts/db/QWERTY-ES_es.py $ETC_DIR/keyboard_layouts/current.py
 
 # BOOT CONFIG
 grep "dtoverlay=dwc2" /boot/config.txt || (echo "dtoverlay=dwc2" | sudo tee --append /boot/config.txt)
