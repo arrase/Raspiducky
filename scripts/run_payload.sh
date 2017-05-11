@@ -2,9 +2,12 @@
 
 . /etc/raspiducky/raspiducky.conf
 
-[ $RUN_AS_DAEMON == "Yes" ] && /bin/hciconfig hci0 piscan && /usr/bin/duckyd.py --start
-
-if [ -f /etc/raspiducky/onboot_payload/payload.dd ]
+if [ $NETWORK_DEVICE == "none" ]
 then
-    /usr/bin/raspiducky.py --payload /etc/raspiducky/onboot_payload/payload.dd
+    [ $RUN_AS_DAEMON == "Yes" ] && /bin/hciconfig hci0 piscan && /usr/bin/duckyd.py --start
+
+    if [ -f /etc/raspiducky/onboot_payload/payload.dd ]
+    then
+        /usr/bin/raspiducky.py --payload /etc/raspiducky/onboot_payload/payload.dd
+    fi
 fi
