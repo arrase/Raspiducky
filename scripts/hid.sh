@@ -33,6 +33,17 @@ echo -ne \\x05\\x01\\x09\\x06\\xa1\\x01\\x05\\x07\\x19\\xe0\\x29\\xe7\\x15\\x00\
 ln -s functions/hid.$N configs/c.$C/
 # End KEYBOARD
 
+# NETWORK
+if [ $NETWORK_DEVICE != "none" ]
+then
+    mkdir -p functions/ecm.$N
+    # first byte of address must be even
+    echo "48:6f:73:74:50:43" > functions/ecm.$N/host_addr # "HostPC"
+    echo "42:61:64:55:53:42" > functions/ecm.$N/dev_addr # "RaspiDucky"
+    ln -s functions/ecm.$N configs/c.$C/
+fi
+# End NETWORK
+
 # STORAGE
 if [ $STORAGE_MODE != "none" ]
 then
@@ -58,3 +69,13 @@ fi
 
 ls /sys/class/udc > UDC
 
+# NETWORK
+if [ $NETWORK_DEVICE != "none" ]
+then
+    ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up
+    if [ $NETWORK_DEVICE == "inet" ]
+    then
+        route add -net default gw 10.0.0.2
+    fi
+fi
+# End NETWORK
