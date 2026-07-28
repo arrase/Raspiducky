@@ -1,6 +1,6 @@
 #!/bin/sh
 # Raspiducky - One-line Installation & Update Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/main/install.sh | sudo sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh | sudo sh
 
 set -e
 
