@@ -1,4 +1,29 @@
-etc/raspiducky/keyboard_layouts/*.pyc
-*.pyc
-.idea
-.idea/*
+# Binaries and build artifacts
+build/
+bin/
+*.exe
+*.exe;
+*.dll
+*.so
+*.dylib
+/raspiducky
+
+# Test binaries
+*.test
+*.out
+coverage.out
+
+# Go vendor directory (if used)
+vendor/
+
+# IDE / OS specific files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local data & storage dir
+data/
+tmp/

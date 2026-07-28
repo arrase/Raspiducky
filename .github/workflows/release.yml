@@ -1,0 +1,47 @@
+name: Release Binaries
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Upload Release Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build Binaries
+        run: |
+          mkdir -p release_assets
+          
+          # Linux ARMv6 (Raspberry Pi Zero W / Zero / Model A)
+          GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-armv6 ./cmd/raspiducky
+          
+          # Linux ARMv7 (Raspberry Pi 2 / 3 32-bit / Banana Pi / Orange Pi)
+          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-armv7 ./cmd/raspiducky
+          
+          # Linux ARM64 (Raspberry Pi 4 / 5 / Zero 2 W / CM4 / CM5 64-bit)
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-arm64 ./cmd/raspiducky
+          
+          # Linux x86_64 / AMD64 (Standard Linux PC)
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-amd64 ./cmd/raspiducky
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

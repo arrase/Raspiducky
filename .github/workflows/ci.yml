@@ -1,0 +1,37 @@
+name: CI (Lint & Test)
+
+on:
+  push:
+    branches: [ master, main, 2.0-alpha ]
+  pull_request:
+    branches: [ master, main, 2.0-alpha ]
+
+jobs:
+  lint-and-test:
+    name: Lint & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Check Code Formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "The following files are not formatted properly:"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Run Go Vet
+        run: go vet ./...
+
+      - name: Run Unit Tests
+        run: go test -v -race ./...
+
+      - name: Verify Build
+        run: go build -v ./...
