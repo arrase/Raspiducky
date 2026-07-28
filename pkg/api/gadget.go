@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +103,9 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	}
 	
 	if cfg.Storage {
+		if err := ensureBackingFile("/var/lib/raspiducky/disk.img"); err != nil {
+			return GadgetStatus{}, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
+		}
 		gadgetCfg.MassStorage = gadget.MassStorageConfig{
 			Enabled: true,
 			BackingFile: "/var/lib/raspiducky/disk.img",
@@ -156,6 +161,31 @@ func validateGadgetConfig(cfg GadgetConfig) error {
 	}
 	if cfg.Product == "" {
 		return errors.New("product string cannot be empty")
+	}
+	return nil
+}
+
+func ensureBackingFile(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		f, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		// Create 100MB file
+		if err := f.Truncate(100 * 1024 * 1024); err != nil {
+			f.Close()
+			return err
+		}
+		f.Close()
+
+		cmd := exec.Command("/usr/sbin/mkfs.vfat", path)
+		if err := cmd.Run(); err != nil {
+			// fallback if mkfs.vfat is in PATH instead
+			cmd2 := exec.Command("mkfs.vfat", path)
+			if err2 := cmd2.Run(); err2 != nil {
+				return fmt.Errorf("formatting disk image: %v, %v", err, err2)
+			}
+		}
 	}
 	return nil
 }
