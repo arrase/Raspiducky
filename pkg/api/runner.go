@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/hid"
+	"github.com/arrase/Raspiducky/pkg/scripting"
 )
 
 // RunnerEngine manages payload script execution jobs and live event streaming.
@@ -18,15 +18,19 @@ type RunnerEngine struct {
 	mu        sync.RWMutex
 	activeJob *JobStatus
 	cancelFn  context.CancelFunc
-	hub       *Hub
-	keyboard  *hid.Keyboard
+	hub        *Hub
+	keyboard   *hid.Keyboard
+	mouse      *hid.Mouse
+	ledWatcher *hid.LEDWatcher
 }
 
 // NewRunnerEngine initializes a new RunnerEngine instance.
-func NewRunnerEngine(hub *Hub, keyboard *hid.Keyboard) *RunnerEngine {
+func NewRunnerEngine(hub *Hub, keyboard *hid.Keyboard, mouse *hid.Mouse, ledWatcher *hid.LEDWatcher) *RunnerEngine {
 	return &RunnerEngine{
-		hub:      hub,
-		keyboard: keyboard,
+		hub:        hub,
+		keyboard:   keyboard,
+		mouse:      mouse,
+		ledWatcher: ledWatcher,
 	}
 }
 
@@ -101,13 +105,25 @@ func (re *RunnerEngine) Stop() error {
 	return nil
 }
 
+type wsLogWriter struct {
+	re     *RunnerEngine
+	source string
+}
+
+func (w *wsLogWriter) Write(p []byte) (n int, err error) {
+	w.re.broadcastLog("INFO", w.source, strings.TrimSuffix(string(p), "\n"))
+	return len(p), nil
+}
+
 func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptContent string) {
 	var execErr error
 
+	engine := scripting.NewScriptEngine(re.keyboard, re.mouse, re.ledWatcher)
+
 	if job.Type == "javascript" {
-		execErr = re.executeJavaScript(ctx, scriptContent)
+		execErr = engine.RunJS(ctx, scriptContent, &wsLogWriter{re: re, source: "JS"})
 	} else {
-		execErr = re.executeDuckyScript(ctx, scriptContent)
+		execErr = engine.RunDuckyScript(ctx, scriptContent, &wsLogWriter{re: re, source: "DUCKY"})
 	}
 
 	re.mu.Lock()
@@ -129,106 +145,6 @@ func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptCon
 
 	re.activeJob = &job
 	re.broadcastJobStatus(job)
-}
-
-func (re *RunnerEngine) executeDuckyScript(ctx context.Context, content string) error {
-	lines := strings.Split(content, "\n")
-	for idx, line := range lines {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "REM") {
-			if strings.HasPrefix(line, "REM") {
-				re.broadcastLog("INFO", "DUCKY", fmt.Sprintf("Comment: %s", line[3:]))
-			}
-			continue
-		}
-
-		parts := strings.SplitN(line, " ", 2)
-		cmd := strings.ToUpper(parts[0])
-		arg := ""
-		if len(parts) > 1 {
-			arg = parts[1]
-		}
-
-		switch cmd {
-		case "DELAY":
-			ms, err := strconv.Atoi(arg)
-			if err != nil {
-				ms = 500
-			}
-			re.broadcastLog("INFO", "HID", fmt.Sprintf("Delaying %d ms...", ms))
-			select {
-			case <-time.After(time.Duration(ms) * time.Millisecond):
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-
-		case "STRING":
-			re.broadcastLog("HID", "KEYBOARD", fmt.Sprintf("Typing string: %s", arg))
-			if re.keyboard != nil {
-				if err := re.keyboard.TypeString(ctx, arg); err != nil {
-					re.broadcastLog("ERROR", "KEYBOARD", fmt.Sprintf("TypeString failed: %v", err))
-				}
-			}
-			time.Sleep(50 * time.Millisecond)
-
-		case "ENTER", "GUI", "WINDOWS", "ALT", "CTRL", "CONTROL", "SHIFT":
-			if arg != "" {
-				re.broadcastLog("HID", "KEYBOARD", fmt.Sprintf("Key combo: %s + %s", cmd, arg))
-				if re.keyboard != nil {
-					if err := re.keyboard.Press(ctx, cmd+" "+arg); err != nil {
-						re.broadcastLog("ERROR", "KEYBOARD", fmt.Sprintf("Press failed: %v", err))
-					}
-				}
-			} else {
-				re.broadcastLog("HID", "KEYBOARD", fmt.Sprintf("Key press: %s", cmd))
-				if re.keyboard != nil {
-					if err := re.keyboard.Press(ctx, cmd); err != nil {
-						re.broadcastLog("ERROR", "KEYBOARD", fmt.Sprintf("Press failed: %v", err))
-					}
-				}
-			}
-			time.Sleep(30 * time.Millisecond)
-
-		case "LED_NUM", "LED_CAPS", "LED_SCROLL":
-			re.broadcastLog("INFO", "LED", fmt.Sprintf("Toggled LED: %s", cmd))
-			re.broadcastLEDState(LEDState{NumLock: true, CapsLock: false, ScrollLock: true})
-
-		default:
-			re.broadcastLog("INFO", "HID", fmt.Sprintf("Line %d: Executed [%s]", idx+1, line))
-			time.Sleep(20 * time.Millisecond)
-		}
-	}
-
-	return nil
-}
-
-func (re *RunnerEngine) executeJavaScript(ctx context.Context, content string) error {
-	lines := strings.Split(content, "\n")
-	re.broadcastLog("INFO", "JS", "Starting JavaScript payload execution context...")
-
-	for idx, line := range lines {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "//") {
-			continue
-		}
-
-		re.broadcastLog("INFO", "JS", fmt.Sprintf("Evaluated L%d: %s", idx+1, line))
-		time.Sleep(40 * time.Millisecond)
-	}
-
-	return nil
 }
 
 func (re *RunnerEngine) broadcastLog(level, source, message string) {

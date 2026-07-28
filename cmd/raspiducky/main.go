@@ -87,9 +87,18 @@ func runDaemon(args []string) error {
 		log.Printf("Warning: failed to initialize keyboard: %v", err)
 	}
 
+	mouse, err := hid.NewMouse("/dev/hidg1")
+	if err != nil {
+		log.Printf("Warning: failed to initialize mouse: %v", err)
+	}
+
+	ledWatcher := hid.NewLEDWatcher(context.Background(), "/dev/hidg0")
+
 	server, err := api.NewServer(api.ServerOptions{
 		StorageDir: *storageDir,
 		Keyboard:   kbd,
+		Mouse:      mouse,
+		LEDWatcher: ledWatcher,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize server: %w", err)
@@ -151,7 +160,14 @@ func runScriptCLI(args []string) error {
 		log.Printf("Warning: failed to initialize keyboard: %v", err)
 	}
 
-	engine := scripting.NewScriptEngine(kbd, nil, nil)
+	mouse, err := hid.NewMouse("/dev/hidg1")
+	if err != nil {
+		log.Printf("Warning: failed to initialize mouse: %v", err)
+	}
+
+	ledWatcher := hid.NewLEDWatcher(context.Background(), "/dev/hidg0")
+
+	engine := scripting.NewScriptEngine(kbd, mouse, ledWatcher)
 	runner := scripting.NewRunner(engine)
 
 	job, err := runner.SubmitJob(scriptType, string(content))
