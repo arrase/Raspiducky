@@ -172,14 +172,14 @@ func (sm *ScriptManager) seedDefaultScripts() error {
 			Content: "// Raspiducky JS Mouse Jiggler\n" +
 				"console.log(\"Starting Mouse Jiggler loop...\");\n" +
 				"for (let i = 0; i < 10; i++) {\n" +
-				"    HID.moveMouse(10, 0);\n" +
-				"    HID.delay(200);\n" +
-				"    HID.moveMouse(0, 10);\n" +
-				"    HID.delay(200);\n" +
-				"    HID.moveMouse(-10, 0);\n" +
-				"    HID.delay(200);\n" +
-				"    HID.moveMouse(0, -10);\n" +
-				"    HID.delay(200);\n" +
+				"    mouseMove(10, 0);\n" +
+				"    delay(200);\n" +
+				"    mouseMove(0, 10);\n" +
+				"    delay(200);\n" +
+				"    mouseMove(-10, 0);\n" +
+				"    delay(200);\n" +
+				"    mouseMove(0, -10);\n" +
+				"    delay(200);\n" +
 				"}\n" +
 				"console.log(\"Jiggler finished!\");\n",
 		},
