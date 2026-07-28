@@ -42,12 +42,16 @@ function updateGadgetUI(gadgetData) {
     const mfg = document.getElementById('manufacturer-name');
     const prod = document.getElementById('product-name');
     const sn = document.getElementById('serial-number');
+    const layout = document.getElementById('keyboard-layout');
+    const storageSize = document.getElementById('storage-size');
 
     if (vid && state.gadget.vendorId) vid.value = state.gadget.vendorId;
     if (pid && state.gadget.productId) pid.value = state.gadget.productId;
     if (mfg && state.gadget.manufacturer) mfg.value = state.gadget.manufacturer;
     if (prod && state.gadget.product) prod.value = state.gadget.product;
     if (sn && state.gadget.serialNumber) sn.value = state.gadget.serialNumber;
+    if (layout && state.gadget.keyboardLayout) layout.value = state.gadget.keyboardLayout;
+    if (storageSize && state.gadget.storageSizeMb) storageSize.value = state.gadget.storageSizeMb;
 }
 
 async function applyGadgetConfig(event) {
@@ -66,7 +70,9 @@ async function applyGadgetConfig(event) {
         productId: document.getElementById('product-id').value.trim(),
         manufacturer: document.getElementById('manufacturer-name').value.trim(),
         product: document.getElementById('product-name').value.trim(),
-        serialNumber: document.getElementById('serial-number').value.trim()
+        serialNumber: document.getElementById('serial-number').value.trim(),
+        keyboardLayout: document.getElementById('keyboard-layout').value.trim(),
+        storageSizeMb: parseInt(document.getElementById('storage-size').value, 10) || 100
     };
 
     try {

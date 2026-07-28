@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/gadget"
+	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
 // GadgetManager manages USB gadget configuration and status.
@@ -20,13 +21,15 @@ type GadgetManager struct {
 	currentStatus GadgetStatus
 	hub           *Hub
 	gm            *gadget.GadgetManager
+	keyboard      *hid.Keyboard
 }
 
 // NewGadgetManager initializes a new GadgetManager instance.
-func NewGadgetManager(hub *Hub) *GadgetManager {
+func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard) *GadgetManager {
 	manager := &GadgetManager{
-		hub: hub,
-		gm:  gadget.NewGadgetManager(),
+		hub:      hub,
+		gm:       gadget.NewGadgetManager(),
+		keyboard: keyboard,
 		currentStatus: GadgetStatus{
 			Deployed:        false,
 			ActiveFunctions: []string{},
@@ -40,8 +43,10 @@ func NewGadgetManager(hub *Hub) *GadgetManager {
 				VendorID:     "0x1d6b",
 				ProductID:    "0x0104",
 				Manufacturer: "Raspiducky Labs",
-				Product:      "Raspiducky Multi-Function HID",
-				SerialNumber: "RPD-2026-0001",
+				Product:        "Raspiducky Multi-Function HID",
+				SerialNumber:   "RPD-2026-0001",
+				StorageSizeMB:  100,
+				KeyboardLayout: "US",
 			},
 		},
 	}
@@ -75,6 +80,12 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
+	if cfg.KeyboardLayout != "" && gm.keyboard != nil {
+		if err := gm.keyboard.SetLayout(cfg.KeyboardLayout); err != nil {
+			return GadgetStatus{}, fmt.Errorf("failed to set keyboard layout: %w", err)
+		}
+	}
+
 	activeFuncs := make([]string, 0, 5)
 	if cfg.Keyboard {
 		activeFuncs = append(activeFuncs, "hid.usb0")
@@ -103,7 +114,11 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	}
 	
 	if cfg.Storage {
-		if err := ensureBackingFile("/var/lib/raspiducky/disk.img"); err != nil {
+		size := cfg.StorageSizeMB
+		if size <= 0 {
+			size = 100 // Default to 100MB if invalid or 0
+		}
+		if err := ensureBackingFile("/var/lib/raspiducky/disk.img", size); err != nil {
 			return GadgetStatus{}, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
 		}
 		gadgetCfg.MassStorage = gadget.MassStorageConfig{
@@ -165,14 +180,14 @@ func validateGadgetConfig(cfg GadgetConfig) error {
 	return nil
 }
 
-func ensureBackingFile(path string) error {
+func ensureBackingFile(path string, sizeMB int) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		f, err := os.Create(path)
 		if err != nil {
 			return err
 		}
-		// Create 100MB file
-		if err := f.Truncate(100 * 1024 * 1024); err != nil {
+		// Create file of sizeMB
+		if err := f.Truncate(int64(sizeMB) * 1024 * 1024); err != nil {
 			f.Close()
 			return err
 		}
