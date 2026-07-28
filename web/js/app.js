@@ -26,7 +26,7 @@ const state = {
     currentJob: null,
     jobStartTime: null,
     jobTimerInterval: null,
-    logs: []
+    wsReconnectTimer: null
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -57,6 +57,15 @@ function initWebSocket() {
     const wsUrl = `${protocol}//${window.location.host}/api/ws`;
 
     updateWSStatus('connecting');
+
+    if (state.ws) {
+        state.ws.onclose = null;
+        state.ws.onerror = null;
+        state.ws.onmessage = null;
+        state.ws.onopen = null;
+        state.ws.close();
+        state.ws = null;
+    }
 
     try {
         state.ws = new WebSocket(wsUrl);
@@ -95,9 +104,12 @@ function initWebSocket() {
 }
 
 function scheduleWSReconnect() {
+    if (state.wsReconnectTimer) {
+        clearTimeout(state.wsReconnectTimer);
+    }
     state.wsReconnectAttempts++;
     const delay = Math.min(5000, 1000 * state.wsReconnectAttempts);
-    setTimeout(initWebSocket, delay);
+    state.wsReconnectTimer = setTimeout(initWebSocket, delay);
 }
 
 function updateWSStatus(status) {

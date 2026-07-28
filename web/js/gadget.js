@@ -72,7 +72,9 @@ async function applyGadgetConfig(event) {
     try {
         appendLog('INFO', 'GADGET', `Deploying gadget config (VID: ${payload.vendorId}, PID: ${payload.productId})...`);
         const result = await apiCall('/api/gadget', 'POST', payload);
-        updateGadgetUI(result);
+        if (result) {
+            updateGadgetUI(result);
+        }
         appendLog('INFO', 'GADGET', 'USB Gadget configuration successfully deployed!');
     } catch (err) {
         appendLog('ERROR', 'GADGET', `Failed to deploy USB gadget config: ${err.message}`);
