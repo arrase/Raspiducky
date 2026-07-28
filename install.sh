@@ -203,7 +203,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=${INSTALL_DIR}/${BINARY_NAME} daemon -port :8000 -storage ${DATA_DIR}
+ExecStart=${INSTALL_DIR}/${BINARY_NAME} daemon -port :8000 -storage ${DATA_DIR} -layout US
 Restart=always
 RestartSec=5
 

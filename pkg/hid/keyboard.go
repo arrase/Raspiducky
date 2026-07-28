@@ -32,13 +32,8 @@ func NewKeyboard(devicePath string, layoutName string) (*Keyboard, error) {
 	}
 
 	var writer io.Writer
-	var ownsWriter bool
+	ownsWriter := false
 	if devicePath != "" {
-		f, err := os.OpenFile(devicePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-		if err != nil {
-			return nil, fmt.Errorf("opening HID keyboard device %s: %w", devicePath, err)
-		}
-		writer = f
 		ownsWriter = true
 	}
 
@@ -105,6 +100,13 @@ func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
 	kbd.mu.Lock()
 	defer kbd.mu.Unlock()
 
+	if kbd.writer == nil && kbd.ownsWriter && kbd.devicePath != "" {
+		f, err := os.OpenFile(kbd.devicePath, os.O_WRONLY|os.O_SYNC, 0666)
+		if err == nil {
+			kbd.writer = f
+		}
+	}
+
 	if kbd.writer == nil {
 		return errors.New("keyboard device not connected")
 	}
@@ -112,6 +114,12 @@ func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
 	data := report[:]
 	n, err := kbd.writer.Write(data)
 	if err != nil {
+		if kbd.ownsWriter {
+			if closer, ok := kbd.writer.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			kbd.writer = nil // Force reopen on next write
+		}
 		return fmt.Errorf("hid keyboard write error: %w", err)
 	}
 	if n < len(data) {

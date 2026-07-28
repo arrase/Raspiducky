@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
 // Server represents the Raspiducky REST API & Embedded Web Dashboard Server.
@@ -18,6 +20,7 @@ type Server struct {
 // ServerOptions allows custom configuration of the API Server.
 type ServerOptions struct {
 	StorageDir string
+	Keyboard   *hid.Keyboard
 }
 
 // NewServer initializes a new Raspiducky API Server instance.
@@ -32,7 +35,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		return nil, err
 	}
 
-	runner := NewRunnerEngine(hub)
+	runner := NewRunnerEngine(hub, opts.Keyboard)
 
 	s := &Server{
 		hub:           hub,

@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
 // RunnerEngine manages payload script execution jobs and live event streaming.
@@ -16,12 +19,14 @@ type RunnerEngine struct {
 	activeJob *JobStatus
 	cancelFn  context.CancelFunc
 	hub       *Hub
+	keyboard  *hid.Keyboard
 }
 
 // NewRunnerEngine initializes a new RunnerEngine instance.
-func NewRunnerEngine(hub *Hub) *RunnerEngine {
+func NewRunnerEngine(hub *Hub, keyboard *hid.Keyboard) *RunnerEngine {
 	return &RunnerEngine{
-		hub: hub,
+		hub:      hub,
+		keyboard: keyboard,
 	}
 }
 
@@ -165,13 +170,28 @@ func (re *RunnerEngine) executeDuckyScript(ctx context.Context, content string) 
 
 		case "STRING":
 			re.broadcastLog("HID", "KEYBOARD", fmt.Sprintf("Typing string: %s", arg))
+			if re.keyboard != nil {
+				if err := re.keyboard.TypeString(ctx, arg); err != nil {
+					re.broadcastLog("ERROR", "KEYBOARD", fmt.Sprintf("TypeString failed: %v", err))
+				}
+			}
 			time.Sleep(50 * time.Millisecond)
 
 		case "ENTER", "GUI", "WINDOWS", "ALT", "CTRL", "CONTROL", "SHIFT":
 			if arg != "" {
 				re.broadcastLog("HID", "KEYBOARD", fmt.Sprintf("Key combo: %s + %s", cmd, arg))
+				if re.keyboard != nil {
+					if err := re.keyboard.Press(ctx, cmd+" "+arg); err != nil {
+						re.broadcastLog("ERROR", "KEYBOARD", fmt.Sprintf("Press failed: %v", err))
+					}
+				}
 			} else {
 				re.broadcastLog("HID", "KEYBOARD", fmt.Sprintf("Key press: %s", cmd))
+				if re.keyboard != nil {
+					if err := re.keyboard.Press(ctx, cmd); err != nil {
+						re.broadcastLog("ERROR", "KEYBOARD", fmt.Sprintf("Press failed: %v", err))
+					}
+				}
 			}
 			time.Sleep(30 * time.Millisecond)
 
@@ -212,6 +232,7 @@ func (re *RunnerEngine) executeJavaScript(ctx context.Context, content string) e
 }
 
 func (re *RunnerEngine) broadcastLog(level, source, message string) {
+	log.Printf("[%s] %s: %s", level, source, message)
 	if re.hub != nil {
 		re.hub.Broadcast(WSMessage{
 			Type:    "log",
