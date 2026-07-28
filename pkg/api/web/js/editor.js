@@ -3,6 +3,21 @@
  */
 
 // Line Numbers Sync
+function syncLineNumbersScroll() {
+    const editor = document.getElementById('code-editor');
+    const lineNumbersElem = document.getElementById('line-numbers');
+    if (editor && lineNumbersElem) {
+        lineNumbersElem.scrollTop = editor.scrollTop;
+    }
+}
+
+function handleEditorKeyDown(e) {
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        insertSnippet('    ');
+    }
+}
+
 function updateLineNumbers() {
     const editor = document.getElementById('code-editor');
     const lineNumbersElem = document.getElementById('line-numbers');
@@ -55,6 +70,7 @@ async function runScript() {
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
     
+    if (runBtn && runBtn.disabled) return;
     if (runBtn) runBtn.disabled = true;
     if (stopBtn) stopBtn.disabled = false;
 
@@ -83,19 +99,22 @@ async function runScript() {
 }
 
 async function stopScript() {
-    const runBtn = document.getElementById('btn-run-script');
-    const stopBtn = document.getElementById('btn-stop-script');
-
     appendLog('WARN', 'RUNNER', 'Requesting emergency stop for active payload job...');
 
     try {
         await apiCall('/api/stop', 'POST', {});
         appendLog('INFO', 'RUNNER', 'Job stop signal dispatched successfully.');
+        updateJobStatusUI({ status: 'STOPPED' });
     } catch (err) {
         appendLog('ERROR', 'RUNNER', `Failed to stop job: ${err.message}`);
-    } finally {
-        if (runBtn) runBtn.disabled = false;
-        if (stopBtn) stopBtn.disabled = true;
+        updateJobStatusUI({ status: 'FAILED' });
+    }
+}
+
+function clearJobTimer() {
+    if (state.jobTimerInterval) {
+        clearInterval(state.jobTimerInterval);
+        state.jobTimerInterval = null;
     }
 }
 
@@ -107,14 +126,14 @@ function updateJobStatusUI(job) {
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
 
-    if (!job || job.status === 'IDLE' || job.status === 'COMPLETED' || job.status === 'STOPPED' || job.status === 'FAILED') {
+    const isTerminal = !job || !job.status || ['IDLE', 'COMPLETED', 'STOPPED', 'FAILED'].includes(job.status.toUpperCase());
+
+    if (isTerminal) {
+        clearJobTimer();
         if (jobBar) jobBar.classList.add('hidden');
         if (runBtn) runBtn.disabled = false;
         if (stopBtn) stopBtn.disabled = true;
-        if (state.jobTimerInterval) {
-            clearInterval(state.jobTimerInterval);
-            state.jobTimerInterval = null;
-        }
+        state.jobStartTime = null;
         return;
     }
 
@@ -129,15 +148,16 @@ function updateJobStatusUI(job) {
     if (runBtn) runBtn.disabled = true;
     if (stopBtn) stopBtn.disabled = false;
 
-    // Start timer counter
-    state.jobStartTime = Date.now();
-    if (!state.jobTimerInterval) {
-        state.jobTimerInterval = setInterval(() => {
-            const elapsed = ((Date.now() - state.jobStartTime) / 1000).toFixed(1);
-            const timerElem = document.getElementById('job-timer-display');
-            if (timerElem) timerElem.textContent = `Duration: ${elapsed}s`;
-        }, 100);
+    // Only start the timer once per job
+    if (!state.jobStartTime) {
+        state.jobStartTime = Date.now();
     }
+    clearJobTimer();
+    state.jobTimerInterval = setInterval(() => {
+        const elapsed = ((Date.now() - state.jobStartTime) / 1000).toFixed(1);
+        const timerElem = document.getElementById('job-timer-display');
+        if (timerElem) timerElem.textContent = `Duration: ${elapsed}s`;
+    }, 100);
 }
 
 // Live Console Output Terminal
@@ -158,6 +178,9 @@ function appendLog(level, source, message) {
     `;
 
     terminal.appendChild(entry);
+    while (terminal.childElementCount > 500) {
+        terminal.removeChild(terminal.firstChild);
+    }
     terminal.scrollTop = terminal.scrollHeight;
 }
 
@@ -165,7 +188,7 @@ function clearConsole() {
     const terminal = document.getElementById('terminal-output');
     if (terminal) {
         terminal.innerHTML = `
-            <div class="log-entry log-system">
+            <div class="log-entry log-system" data-level="INFO">
                 <span class="log-time">[${new Date().toLocaleTimeString('en-US', { hour12: false })}]</span>
                 <span class="log-tag tag-info">SYS</span>
                 <span class="log-msg">Console cleared.</span>
@@ -193,7 +216,8 @@ function escapeHtml(str) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Payload Library Management
@@ -226,7 +250,7 @@ async function loadScriptsLibrary() {
                 name: 'mouse_jiggler.js',
                 type: 'javascript',
                 description: 'JS HID script that moves cursor in circles to prevent system sleep',
-                content: '// Raspiducky JS Mouse Jiggler\nconsole.log("Starting Mouse Jiggler loop...");\nfor (let i = 0; i < 10; i++) {\n    HID.moveMouse(10, 0);\n    HID.delay(200);\n    HID.moveMouse(0, 10);\n    HID.delay(200);\n    HID.moveMouse(-10, 0);\n    HID.delay(200);\n    HID.moveMouse(0, -10);\n    HID.delay(200);\n}\nconsole.log("Jiggler finished!");\n',
+                content: '// Raspiducky JS Mouse Jiggler\nconsole.log("Starting Mouse Jiggler loop...");\nfor (let i = 0; i < 10; i++) {\n    mouseMove(10, 0);\n    delay(200);\n    mouseMove(0, 10);\n    delay(200);\n    mouseMove(-10, 0);\n    delay(200);\n    mouseMove(0, -10);\n    delay(200);\n}\nconsole.log("Jiggler finished!");\n',
                 updatedAt: new Date().toISOString()
             }
         ];

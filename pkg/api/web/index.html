@@ -254,7 +254,7 @@
                             </div>
                             <div class="editor-body">
                                 <div class="line-numbers" id="line-numbers">1</div>
-                                <textarea id="code-editor" spellcheck="false" placeholder="Enter DuckyScript or HIDScript commands here...&#10;&#10;REM Example DuckyScript Payload&#10;DELAY 1000&#10;GUI r&#10;DELAY 500&#10;STRING notepad.exe&#10;ENTER&#10;DELAY 1000&#10;STRING Hello from Raspiducky!&#10;ENTER" oninput="updateLineNumbers()"></textarea>
+                                <textarea id="code-editor" spellcheck="false" placeholder="Enter DuckyScript or HIDScript commands here...&#10;&#10;REM Example DuckyScript Payload&#10;DELAY 1000&#10;GUI r&#10;DELAY 500&#10;STRING notepad.exe&#10;ENTER&#10;DELAY 1000&#10;STRING Hello from Raspiducky!&#10;ENTER" oninput="updateLineNumbers()" onscroll="syncLineNumbersScroll()" onkeydown="handleEditorKeyDown(event)"></textarea>
                             </div>
                         </div>
 
@@ -279,7 +279,7 @@
                                 </div>
                             </div>
                             <div class="terminal-body" id="terminal-output">
-                                <div class="log-entry log-system">
+                                <div class="log-entry log-system" data-level="INFO">
                                     <span class="log-time">[00:00:00]</span>
                                     <span class="log-tag tag-info">SYS</span>
                                     <span class="log-msg">Raspiducky Console Ready. Waiting for payload execution...</span>
