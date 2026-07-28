@@ -40,7 +40,7 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-amd64 ./cmd/raspiducky
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: release_assets/*
         env:
