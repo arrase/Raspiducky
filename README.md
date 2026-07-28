@@ -23,6 +23,21 @@ It is designed as a complete, modern rewrite of the legacy `P4wnP1 A.L.O.A.` pro
 
 ---
 
+## 🖼️ Web Dashboard Showcase
+
+| Main Dashboard & Gadget Control | Script Editor & Live Execution Console |
+| :---: | :---: |
+| ![Main Dashboard](screenshots/main.png) | ![Script Editor](screenshots/script.png) |
+
+<br>
+
+<p align="center">
+  <b>Payload Library & Job Manager</b><br><br>
+  <img src="screenshots/payload.png" alt="Payload Library Manager" width="95%">
+</p>
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -56,23 +71,60 @@ It is designed as a complete, modern rewrite of the legacy `P4wnP1 A.L.O.A.` pro
 
 ## 🚀 Getting Started
 
-### Prerequisites
-* Raspberry Pi Zero W / Zero 2 W / Pi 4 (or any board running Linux with `configfs` and USB OTG UDC support).
-* Operating System: **Raspberry Pi OS Lite** (recommended) or Alpine Linux.
+### ⚡ Quick Installation & Auto-Update (Recommended)
 
-### Building from Source
+Run this single command on your Raspberry Pi (or Linux target) to automatically detect architecture, download the latest release binary, configure USB Gadget kernel overlays, and set up the systemd service:
 
-#### 1. Native Build
+```bash
+curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/main/install.sh | sudo sh
+```
+
+Running this command again in the future will automatically update Raspiducky to the latest GitHub release.
+
+### 💻 Hardware Compatibility & USB OTG Support
+
+> ⚠️ **Important Hardware Requirement**:
+> USB Gadget mode (HID keyboard/mouse, Mass Storage, USB Network) requires a Single Board Computer (SBC) where the USB OTG controller (DWC2, DWC3, or MUSB) is connected directly to a Micro-USB or USB-C OTG port **without an onboard USB Hub chip**.
+>
+> * **Supported RPi Ports**: Raspberry Pi Zero / Zero W / Zero 2 W (Micro-USB USB port), Raspberry Pi 3A+ / A+ (Type-A OTG port), Raspberry Pi 4B / 5 (USB-C power/data port).
+> * **Unsupported RPi Ports**: Standard Type-A ports on Raspberry Pi 1B, 2B, 3B, and 3B+ pass through an onboard LAN9512/LAN9514/LAN7515 USB hub chip which prevents USB Device/Gadget mode.
+
+#### 📋 Supported Boards & Binary Asset Matrix
+
+| Asset Name | Architecture | Target SBC Boards | USB OTG Port | Go Build Command |
+|---|---|---|---|---|
+| **`raspiducky-linux-armv6`** | ARMv6 (32-bit) | • **Raspberry Pi Zero**<br>• **Raspberry Pi Zero W**<br>• **Raspberry Pi Model A / A+** | Micro-USB (USB port) | `GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o build/raspiducky-linux-armv6 ./cmd/raspiducky` |
+| **`raspiducky-linux-armv7`** | ARMv7 (32-bit) | • **Raspberry Pi 3A+** *(32-bit OS)*<br>• **Raspberry Pi Compute Module 3**<br>• **Banana Pi M2 Zero / M1**<br>• **Orange Pi Zero / One / PC**<br>• **NanoPi NEO** | Micro-USB OTG port | `GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o build/raspiducky-linux-armv7 ./cmd/raspiducky` |
+| **`raspiducky-linux-arm64`** | ARM64 (64-bit) | • **Raspberry Pi Zero 2 W** *(64-bit OS)*<br>• **Raspberry Pi 4 Model B** *(USB-C)*<br>• **Raspberry Pi 5** *(USB-C)*<br>• **Raspberry Pi 3A+** *(64-bit OS)*<br>• **Raspberry Pi CM4 / CM5**<br>• **Orange Pi Zero 2 / Zero 3 / 3 LTS / 5**<br>• **NanoPi R2S / R4S / NEO3**<br>• **Radxa Rock Pi 4 / 5 / Zero**<br>• **Pine64 Quartz64** | USB-C or Micro-USB OTG port | `GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/raspiducky-linux-arm64 ./cmd/raspiducky` |
+| **`raspiducky-linux-amd64`** | x86_64 (64-bit) | • **Standard PC / Intel NUC** *(Linux with USB OTG/UDC hardware or vUSB testing)* | USB-C OTG / Dual-role port | `GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o build/raspiducky-linux-amd64 ./cmd/raspiducky` |
+
+---
+
+### 🛠️ Building from Source
+
+#### 1. Native Build (On Target Device)
 ```bash
 git clone https://github.com/arrase/Raspiducky.git
 cd Raspiducky
 go build -o build/raspiducky ./cmd/raspiducky
 ```
 
-#### 2. Cross-Compiling for Raspberry Pi Zero W (ARMv6)
-```bash
-GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o build/raspiducky ./cmd/raspiducky
-```
+#### 2. Cross-Compiling for Specific Targets
+
+* **Raspberry Pi Zero / Zero W (ARMv6)**:
+  ```bash
+  GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o build/raspiducky-linux-armv6 ./cmd/raspiducky
+  ```
+
+* **Raspberry Pi 3A+ / Banana Pi M2 Zero / Orange Pi (ARMv7 32-bit)**:
+  ```bash
+  GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o build/raspiducky-linux-armv7 ./cmd/raspiducky
+  ```
+
+* **Raspberry Pi Zero 2 W / Pi 4 / Pi 5 / Orange Pi 5 / Radxa (ARM64 64-bit)**:
+  ```bash
+  GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/raspiducky-linux-arm64 ./cmd/raspiducky
+  ```
 
 ---
 

@@ -28,13 +28,13 @@ type LEDState struct {
 
 // LEDWatcher monitors `/dev/hidg0` for host LED state updates.
 type LEDWatcher struct {
-	mu        sync.Mutex
-	reader    io.Reader
+	mu         sync.Mutex
+	reader     io.Reader
 	ownsReader bool
-	current   uint8
-	listeners map[chan uint8]uint8 // channel -> mask
-	ctx       context.Context
-	cancel    context.CancelFunc
+	current    uint8
+	listeners  map[chan uint8]uint8 // channel -> mask
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 // NewLEDWatcher initializes an LEDWatcher reading from devicePath.
@@ -201,4 +201,3 @@ func isTemporary(err error) bool {
 	}
 	return false
 }
-

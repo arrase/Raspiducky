@@ -13,7 +13,7 @@ import (
 
 // ScriptManager manages saving, loading, and deleting payload scripts.
 type ScriptManager struct {
-	mu        sync.RWMutex
+	mu         sync.RWMutex
 	storageDir string
 }
 

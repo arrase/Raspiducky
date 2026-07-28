@@ -1,8 +1,8 @@
 package hid
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"testing"
 )
 

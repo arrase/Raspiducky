@@ -65,9 +65,9 @@ func (w *jobWriter) Write(p []byte) (n int, err error) {
 
 // Runner manages asynchronous job creation, cancellation, and status tracking.
 type Runner struct {
-	mu     sync.RWMutex
-	engine *ScriptEngine
-	jobs   map[string]*Job
+	mu      sync.RWMutex
+	engine  *ScriptEngine
+	jobs    map[string]*Job
 	counter int64
 }
 

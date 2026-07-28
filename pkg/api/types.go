@@ -55,8 +55,8 @@ type JobStatus struct {
 
 // LEDState represents keyboard lock LED indicators.
 type LEDState struct {
-	NumLock   bool `json:"numLock"`
-	CapsLock  bool `json:"capsLock"`
+	NumLock    bool `json:"numLock"`
+	CapsLock   bool `json:"capsLock"`
 	ScrollLock bool `json:"scrollLock"`
 }
 
