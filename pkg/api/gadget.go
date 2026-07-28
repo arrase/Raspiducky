@@ -45,13 +45,9 @@ func NewGadgetManager(hub *Hub) *GadgetManager {
 	}
 	
 	// Deploy default config at startup
-	go func() {
-		time.Sleep(500 * time.Millisecond) // Wait a bit for server to settle
-		_, err := manager.UpdateConfig(manager.currentStatus.Config)
-		if err != nil {
-			log.Printf("[Gadget] Could not deploy default gadget config: %v", err)
-		}
-	}()
+	if _, err := manager.UpdateConfig(manager.currentStatus.Config); err != nil {
+		log.Printf("[Gadget] Could not deploy default gadget config: %v", err)
+	}
 	
 	return manager
 }
