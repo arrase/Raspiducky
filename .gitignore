@@ -6,7 +6,7 @@ bin/
 *.dll
 *.so
 *.dylib
-raspiducky
+/raspiducky
 
 # Test binaries
 *.test
