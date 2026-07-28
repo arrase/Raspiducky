@@ -6,16 +6,18 @@ import (
 
 // GadgetConfig represents the configurable USB parameters and peripheral profiles.
 type GadgetConfig struct {
-	Keyboard     bool   `json:"keyboard"`
-	Mouse        bool   `json:"mouse"`
-	Storage      bool   `json:"storage"`
-	Ethernet     bool   `json:"ethernet"`
-	Serial       bool   `json:"serial"`
-	VendorID     string `json:"vendorId"`
-	ProductID    string `json:"productId"`
-	Manufacturer string `json:"manufacturer"`
-	Product      string `json:"product"`
-	SerialNumber string `json:"serialNumber"`
+	Keyboard       bool   `json:"keyboard"`
+	Mouse          bool   `json:"mouse"`
+	Storage        bool   `json:"storage"`
+	Ethernet       bool   `json:"ethernet"`
+	Serial         bool   `json:"serial"`
+	VendorID       string `json:"vendorId"`
+	ProductID      string `json:"productId"`
+	Manufacturer   string `json:"manufacturer"`
+	Product        string `json:"product"`
+	SerialNumber   string `json:"serialNumber"`
+	StorageSizeMB  int    `json:"storageSizeMb"`
+	KeyboardLayout string `json:"keyboardLayout"`
 }
 
 // GadgetStatus represents the active status of the USB gadget subsystem.

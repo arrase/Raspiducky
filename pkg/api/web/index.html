@@ -173,6 +173,23 @@
                                     <input type="text" id="product-name" placeholder="Raspiducky Multi-Function HID" value="Raspiducky Multi-Function HID" required>
                                 </div>
 
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="keyboard-layout">Keyboard Layout</label>
+                                        <select id="keyboard-layout" required>
+                                            <option value="US">US (English)</option>
+                                            <option value="ES">ES (Spanish)</option>
+                                            <option value="DE">DE (German)</option>
+                                            <option value="FR">FR (French)</option>
+                                            <option value="GB">GB (UK English)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="storage-size">Mass Storage Size (MB)</label>
+                                        <input type="number" id="storage-size" placeholder="100" value="100" min="10" max="8192" required>
+                                    </div>
+                                </div>
+
                                 <div class="form-group">
                                     <label for="serial-number">Serial Number</label>
                                     <input type="text" id="serial-number" placeholder="RPD-2026-0001" value="RPD-2026-0001" required>
