@@ -29,13 +29,8 @@ type Mouse struct {
 // NewMouse initializes a new Mouse connected to the specified device path.
 func NewMouse(devicePath string) (*Mouse, error) {
 	var writer io.Writer
-	var ownsWriter bool
+	ownsWriter := false
 	if devicePath != "" {
-		f, err := os.OpenFile(devicePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-		if err != nil {
-			return nil, fmt.Errorf("opening HID mouse device %s: %w", devicePath, err)
-		}
-		writer = f
 		ownsWriter = true
 	}
 
@@ -60,11 +55,24 @@ func (m *Mouse) SetWriter(w io.Writer) {
 }
 
 func (m *Mouse) writeReport(report []byte) error {
+	if m.writer == nil && m.ownsWriter && m.devicePath != "" {
+		f, err := os.OpenFile(m.devicePath, os.O_WRONLY|os.O_SYNC, 0666)
+		if err == nil {
+			m.writer = f
+		}
+	}
+
 	if m.writer == nil {
 		return errors.New("mouse device not connected")
 	}
 	n, err := m.writer.Write(report)
 	if err != nil {
+		if m.ownsWriter {
+			if closer, ok := m.writer.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			m.writer = nil // Force reopen on next write
+		}
 		return fmt.Errorf("hid mouse write error: %w", err)
 	}
 	if n < len(report) {
