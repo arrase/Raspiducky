@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/api"
+	"github.com/arrase/Raspiducky/pkg/hid"
 	"github.com/arrase/Raspiducky/pkg/scripting"
 )
 
@@ -67,20 +68,28 @@ func printUsage() {
 	fmt.Println("Daemon Flags:")
 	fmt.Println("  -port string     Port for Web Dashboard & API (default \":8000\")")
 	fmt.Println("  -storage string  Path to persistent storage directory (default \"/var/lib/raspiducky\")")
+	fmt.Println("  -layout string   Keyboard layout (US, ES, DE, FR) (default \"US\")")
 }
 
 func runDaemon(args []string) error {
 	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
 	port := fs.String("port", ":8000", "Server port")
 	storageDir := fs.String("storage", "/var/lib/raspiducky", "Storage directory")
+	layout := fs.String("layout", "US", "Keyboard layout")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
 
 	log.Printf("Starting Raspiducky Daemon %s on %s...", version, *port)
 
+	kbd, err := hid.NewKeyboard("/dev/hidg0", *layout)
+	if err != nil {
+		log.Printf("Warning: failed to initialize keyboard: %v", err)
+	}
+
 	server, err := api.NewServer(api.ServerOptions{
 		StorageDir: *storageDir,
+		Keyboard:   kbd,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize server: %w", err)
@@ -130,7 +139,19 @@ func runScriptCLI(args []string) error {
 		scriptType = "ducky"
 	}
 
-	engine := scripting.NewScriptEngine(nil, nil, nil)
+	// Parse CLI flags for layout if provided
+	fs := flag.NewFlagSet("run", flag.ExitOnError)
+	layout := fs.String("layout", "US", "Keyboard layout")
+	if err := fs.Parse(args[1:]); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	kbd, err := hid.NewKeyboard("/dev/hidg0", *layout)
+	if err != nil {
+		log.Printf("Warning: failed to initialize keyboard: %v", err)
+	}
+
+	engine := scripting.NewScriptEngine(kbd, nil, nil)
 	runner := scripting.NewRunner(engine)
 
 	job, err := runner.SubmitJob(scriptType, string(content))

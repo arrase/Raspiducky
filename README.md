@@ -134,15 +134,17 @@ go build -o build/raspiducky ./cmd/raspiducky
 Run `raspiducky` in daemon mode with root privileges (required to interact with `/sys/kernel/config/usb_gadget` and `/dev/hidg*`):
 
 ```bash
-sudo ./raspiducky daemon -port :8000
+sudo ./raspiducky daemon -port :8000 -layout US
 ```
+> Note: The `-layout` flag sets the default keyboard layout (e.g. `US`, `ES`, `DE`, `FR`).
+
 Open your browser and navigate to `http://<raspberry-pi-ip>:8000` to access the live dashboard.
 
 ### 2. Executing Scripts via CLI
 You can execute a DuckyScript (`.txt`) or JavaScript (`.js`) file directly from the command line:
 
 ```bash
-sudo ./raspiducky run payloads/hello_world.txt
+sudo ./raspiducky run payloads/hello_world.txt -layout ES
 ```
 
 ---
