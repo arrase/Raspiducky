@@ -76,7 +76,7 @@ It is designed as a complete, modern rewrite of the legacy `P4wnP1 A.L.O.A.` pro
 Run this single command on your Raspberry Pi (or Linux target) to automatically detect architecture, download the latest release binary, configure USB Gadget kernel overlays, and set up the systemd service:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/main/install.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh | sudo sh
 ```
 
 Running this command again in the future will automatically update Raspiducky to the latest GitHub release.
