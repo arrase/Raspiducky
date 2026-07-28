@@ -126,7 +126,7 @@ function updateJobStatusUI(job) {
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
 
-    const isTerminal = !job || job.status === 'IDLE' || job.status === 'COMPLETED' || job.status === 'STOPPED' || job.status === 'FAILED';
+    const isTerminal = !job || !job.status || ['IDLE', 'COMPLETED', 'STOPPED', 'FAILED'].includes(job.status.toUpperCase());
 
     if (isTerminal) {
         clearJobTimer();

@@ -21,6 +21,8 @@ type Server struct {
 type ServerOptions struct {
 	StorageDir string
 	Keyboard   *hid.Keyboard
+	Mouse      *hid.Mouse
+	LEDWatcher *hid.LEDWatcher
 }
 
 // NewServer initializes a new Raspiducky API Server instance.
@@ -35,7 +37,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		return nil, err
 	}
 
-	runner := NewRunnerEngine(hub, opts.Keyboard)
+	runner := NewRunnerEngine(hub, opts.Keyboard, opts.Mouse, opts.LEDWatcher)
 
 	s := &Server{
 		hub:           hub,
