@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,9 @@ func NewGadgetManager(hub *Hub) *GadgetManager {
 			},
 		},
 	}
-	_ = gm.syncFromSystem()
+	if err := gm.syncFromSystem(); err != nil {
+		log.Printf("[Gadget] Could not sync from system (non-fatal): %v", err)
+	}
 	return gm
 }
 
@@ -83,7 +86,9 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 
 	// Apply to configfs if Linux kernel configfs directory exists
 	if _, err := os.Stat(gm.configfsPath); err == nil {
-		_ = gm.applyConfigfs(cfg)
+		if err := gm.applyConfigfs(cfg); err != nil {
+			return GadgetStatus{}, fmt.Errorf("failed to apply configfs: %w", err)
+		}
 	}
 
 	if gm.hub != nil {
@@ -128,10 +133,14 @@ func (gm *GadgetManager) syncFromSystem() error {
 }
 
 func (gm *GadgetManager) applyConfigfs(cfg GadgetConfig) error {
-	// If writing to real configfs:
-	// Unbind UDC -> update strings/functions -> rebind UDC
-	_ = os.WriteFile(filepath.Join(gm.configfsPath, "UDC"), []byte("\n"), 0644)
-	_ = os.WriteFile(filepath.Join(gm.configfsPath, "idVendor"), []byte(cfg.VendorID+"\n"), 0644)
-	_ = os.WriteFile(filepath.Join(gm.configfsPath, "idProduct"), []byte(cfg.ProductID+"\n"), 0644)
+	if err := os.WriteFile(filepath.Join(gm.configfsPath, "UDC"), []byte("\n"), 0644); err != nil {
+		return fmt.Errorf("unbinding UDC: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(gm.configfsPath, "idVendor"), []byte(cfg.VendorID+"\n"), 0644); err != nil {
+		return fmt.Errorf("writing idVendor: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(gm.configfsPath, "idProduct"), []byte(cfg.ProductID+"\n"), 0644); err != nil {
+		return fmt.Errorf("writing idProduct: %w", err)
+	}
 	return nil
 }

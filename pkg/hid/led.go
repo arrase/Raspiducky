@@ -86,6 +86,9 @@ func (w *LEDWatcher) readLoop() {
 
 		n, err := r.Read(buf)
 		if err != nil {
+			if err == io.EOF || !isTemporary(err) {
+				return
+			}
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
@@ -186,3 +189,16 @@ func (w *LEDWatcher) Close() {
 		}
 	}
 }
+
+// isTemporary checks if an error is temporary and retryable.
+func isTemporary(err error) bool {
+	type temporary interface {
+		Temporary() bool
+	}
+	var t temporary
+	if errors.As(err, &t) {
+		return t.Temporary()
+	}
+	return false
+}
+

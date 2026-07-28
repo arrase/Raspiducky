@@ -34,11 +34,24 @@ type Job struct {
 	cancelFunc context.CancelFunc
 }
 
+// snapshotLocked returns a copy of the job's public state. Caller must hold j.mu.
+func (j *Job) snapshotLocked() *Job {
+	return &Job{
+		ID:         j.ID,
+		ScriptType: j.ScriptType,
+		Source:     j.Source,
+		Status:     j.Status,
+		StartTime:  j.StartTime,
+		EndTime:    j.EndTime,
+		Error:      j.Error,
+		Logs:       j.logBuf.String(),
+	}
+}
+
 func (j *Job) appendLog(msg []byte) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.logBuf.Write(msg)
-	j.Logs = j.logBuf.String()
 }
 
 type jobWriter struct {
@@ -90,6 +103,8 @@ func (r *Runner) SubmitJob(scriptType string, source string) (*Job, error) {
 }
 
 func (r *Runner) executeJob(ctx context.Context, job *Job) {
+	defer job.cancelFunc()
+
 	job.mu.Lock()
 	job.Status = StatusRunning
 	job.StartTime = time.Now()
@@ -108,9 +123,9 @@ func (r *Runner) executeJob(ctx context.Context, job *Job) {
 	defer job.mu.Unlock()
 	job.EndTime = time.Now()
 
-	if ctx.Err() == context.Canceled {
+	if ctx.Err() != nil {
 		job.Status = StatusCancelled
-		job.Error = "job cancelled by user"
+		job.Error = ctx.Err().Error()
 	} else if err != nil {
 		job.Status = StatusFailed
 		job.Error = err.Error()
@@ -149,8 +164,7 @@ func (r *Runner) GetJob(jobID string) (*Job, bool) {
 
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	snapshot := *job
-	return &snapshot, true
+	return job.snapshotLocked(), true
 }
 
 // ListJobs returns all current and historical jobs.
@@ -161,9 +175,8 @@ func (r *Runner) ListJobs() []*Job {
 	list := make([]*Job, 0, len(r.jobs))
 	for _, j := range r.jobs {
 		j.mu.Lock()
-		snapshot := *j
+		list = append(list, j.snapshotLocked())
 		j.mu.Unlock()
-		list = append(list, &snapshot)
 	}
 	return list
 }

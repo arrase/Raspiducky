@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/hid"
@@ -14,7 +13,6 @@ import (
 
 // ScriptEngine executes JavaScript and DuckyScript using Goja runtime and HID devices.
 type ScriptEngine struct {
-	mu         sync.Mutex
 	keyboard   *hid.Keyboard
 	mouse      *hid.Mouse
 	ledWatcher *hid.LEDWatcher
@@ -34,9 +32,14 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 	vm := goja.New()
 
 	// Intercept execution on context cancellation
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		<-ctx.Done()
-		vm.Interrupt(ctx.Err())
+		select {
+		case <-ctx.Done():
+			vm.Interrupt(ctx.Err())
+		case <-done:
+		}
 	}()
 
 	// Inject `type(text)`

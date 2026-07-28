@@ -2,6 +2,7 @@ package hid
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -27,17 +28,18 @@ type Keyboard struct {
 func NewKeyboard(devicePath string, layoutName string) (*Keyboard, error) {
 	layout, err := GetLayout(layoutName)
 	if err != nil {
-		layout, _ = GetLayout("US")
+		return nil, fmt.Errorf("loading keyboard layout %q: %w", layoutName, err)
 	}
 
 	var writer io.Writer
 	var ownsWriter bool
 	if devicePath != "" {
 		f, err := os.OpenFile(devicePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-		if err == nil {
-			writer = f
-			ownsWriter = true
+		if err != nil {
+			return nil, fmt.Errorf("opening HID keyboard device %s: %w", devicePath, err)
 		}
+		writer = f
+		ownsWriter = true
 	}
 
 	kbd := &Keyboard{
@@ -81,10 +83,7 @@ func (kbd *Keyboard) SetLayout(layoutName string) error {
 func (kbd *Keyboard) GetLayoutName() string {
 	kbd.mu.Lock()
 	defer kbd.mu.Unlock()
-	if kbd.activeLayout != nil {
-		return kbd.activeLayout.Name
-	}
-	return "US"
+	return kbd.activeLayout.Name
 }
 
 // SetTypingSpeed sets inter-keystroke delay and optional random jitter in milliseconds.
@@ -107,7 +106,7 @@ func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
 	defer kbd.mu.Unlock()
 
 	if kbd.writer == nil {
-		return nil // No device connected, drop silently
+		return errors.New("keyboard device not connected")
 	}
 
 	data := report[:]

@@ -2,6 +2,7 @@ package hid
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,10 +32,11 @@ func NewMouse(devicePath string) (*Mouse, error) {
 	var ownsWriter bool
 	if devicePath != "" {
 		f, err := os.OpenFile(devicePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-		if err == nil {
-			writer = f
-			ownsWriter = true
+		if err != nil {
+			return nil, fmt.Errorf("opening HID mouse device %s: %w", devicePath, err)
 		}
+		writer = f
+		ownsWriter = true
 	}
 
 	return &Mouse{
@@ -59,7 +61,7 @@ func (m *Mouse) SetWriter(w io.Writer) {
 
 func (m *Mouse) writeReport(report []byte) error {
 	if m.writer == nil {
-		return nil
+		return errors.New("mouse device not connected")
 	}
 	n, err := m.writer.Write(report)
 	if err != nil {

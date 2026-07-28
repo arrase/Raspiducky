@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,9 @@ func NewScriptManager(storageDir string) (*ScriptManager, error) {
 	}
 
 	// Seed default scripts if directory is empty
-	_ = sm.seedDefaultScripts()
+	if err := sm.seedDefaultScripts(); err != nil {
+		log.Printf("[Scripts] Failed to seed default scripts: %v", err)
+	}
 
 	return sm, nil
 }
@@ -60,6 +63,7 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 		filePath := filepath.Join(sm.storageDir, name)
 		contentBytes, err := os.ReadFile(filePath)
 		if err != nil {
+			log.Printf("[Scripts] Failed to read script %s: %v", name, err)
 			continue
 		}
 
