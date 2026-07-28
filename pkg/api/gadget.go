@@ -1,32 +1,34 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/arrase/Raspiducky/pkg/gadget"
 )
 
 // GadgetManager manages USB gadget configuration and status.
 type GadgetManager struct {
 	mu            sync.RWMutex
-	configfsPath  string
 	currentStatus GadgetStatus
 	hub           *Hub
+	gm            *gadget.GadgetManager
 }
 
 // NewGadgetManager initializes a new GadgetManager instance.
 func NewGadgetManager(hub *Hub) *GadgetManager {
-	gm := &GadgetManager{
-		configfsPath: "/sys/kernel/config/usb_gadget/raspiducky",
-		hub:          hub,
+	manager := &GadgetManager{
+		hub: hub,
+		gm:  gadget.NewGadgetManager(),
 		currentStatus: GadgetStatus{
-			Deployed:        true,
-			ActiveFunctions: []string{"keyboard.usb0", "mouse.usb0"},
-			UDC:             "3f980000.usb",
+			Deployed:        false,
+			ActiveFunctions: []string{},
+			UDC:             "",
 			Config: GadgetConfig{
 				Keyboard:     true,
 				Mouse:        true,
@@ -41,16 +43,24 @@ func NewGadgetManager(hub *Hub) *GadgetManager {
 			},
 		},
 	}
-	if err := gm.syncFromSystem(); err != nil {
-		log.Printf("[Gadget] Could not sync from system (non-fatal): %v", err)
+	
+	// Deploy default config at startup
+	if _, err := manager.UpdateConfig(manager.currentStatus.Config); err != nil {
+		log.Printf("[Gadget] Could not deploy default gadget config: %v", err)
 	}
-	return gm
+	
+	return manager
 }
 
 // GetStatus returns the current USB gadget status and config.
 func (gm *GadgetManager) GetStatus() GadgetStatus {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
+	
+	if udc, err := gm.gm.GetUDCName(); err == nil {
+		gm.currentStatus.UDC = udc
+	}
+	
 	return gm.currentStatus
 }
 
@@ -80,15 +90,48 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		activeFuncs = append(activeFuncs, "acm.usb0")
 	}
 
+	gadgetCfg := gadget.Config{
+		VID:          cfg.VendorID,
+		PID:          cfg.ProductID,
+		Manufacturer: cfg.Manufacturer,
+		Product:      cfg.Product,
+		Serial:       cfg.SerialNumber,
+		Keyboard:     cfg.Keyboard,
+		Mouse:        cfg.Mouse,
+	}
+	
+	if cfg.Storage {
+		gadgetCfg.MassStorage = gadget.MassStorageConfig{
+			Enabled: true,
+			BackingFile: "/var/lib/raspiducky/disk.img",
+		}
+	}
+	if cfg.Ethernet {
+		gadgetCfg.RNDIS = gadget.EthernetConfig{
+			Enabled: true,
+			HostAddr: "02:00:00:00:00:01",
+			DevAddr: "02:00:00:00:00:02",
+		}
+	}
+	if cfg.Serial {
+		gadgetCfg.ACM = gadget.SerialConfig{
+			Enabled: true,
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := gm.gm.Deploy(ctx, gadgetCfg); err != nil {
+		return GadgetStatus{}, fmt.Errorf("failed to deploy configfs: %w", err)
+	}
+
 	gm.currentStatus.Config = cfg
 	gm.currentStatus.ActiveFunctions = activeFuncs
 	gm.currentStatus.Deployed = true
-
-	// Apply to configfs if Linux kernel configfs directory exists
-	if _, err := os.Stat(gm.configfsPath); err == nil {
-		if err := gm.applyConfigfs(cfg); err != nil {
-			return GadgetStatus{}, fmt.Errorf("failed to apply configfs: %w", err)
-		}
+	
+	if udc, err := gm.gm.GetUDCName(); err == nil {
+		gm.currentStatus.UDC = udc
 	}
 
 	if gm.hub != nil {
@@ -113,34 +156,6 @@ func validateGadgetConfig(cfg GadgetConfig) error {
 	}
 	if cfg.Product == "" {
 		return errors.New("product string cannot be empty")
-	}
-	return nil
-}
-
-func (gm *GadgetManager) syncFromSystem() error {
-	udcFile := filepath.Join(gm.configfsPath, "UDC")
-	data, err := os.ReadFile(udcFile)
-	if err != nil {
-		return err
-	}
-
-	udc := strings.TrimSpace(string(data))
-	gm.mu.Lock()
-	gm.currentStatus.UDC = udc
-	gm.currentStatus.Deployed = udc != ""
-	gm.mu.Unlock()
-	return nil
-}
-
-func (gm *GadgetManager) applyConfigfs(cfg GadgetConfig) error {
-	if err := os.WriteFile(filepath.Join(gm.configfsPath, "UDC"), []byte("\n"), 0644); err != nil {
-		return fmt.Errorf("unbinding UDC: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(gm.configfsPath, "idVendor"), []byte(cfg.VendorID+"\n"), 0644); err != nil {
-		return fmt.Errorf("writing idVendor: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(gm.configfsPath, "idProduct"), []byte(cfg.ProductID+"\n"), 0644); err != nil {
-		return fmt.Errorf("writing idProduct: %w", err)
 	}
 	return nil
 }
