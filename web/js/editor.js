@@ -250,7 +250,7 @@ async function loadScriptsLibrary() {
                 name: 'mouse_jiggler.js',
                 type: 'javascript',
                 description: 'JS HID script that moves cursor in circles to prevent system sleep',
-                content: '// Raspiducky JS Mouse Jiggler\nconsole.log("Starting Mouse Jiggler loop...");\nfor (let i = 0; i < 10; i++) {\n    HID.moveMouse(10, 0);\n    HID.delay(200);\n    HID.moveMouse(0, 10);\n    HID.delay(200);\n    HID.moveMouse(-10, 0);\n    HID.delay(200);\n    HID.moveMouse(0, -10);\n    HID.delay(200);\n}\nconsole.log("Jiggler finished!");\n',
+                content: '// Raspiducky JS Mouse Jiggler\nconsole.log("Starting Mouse Jiggler loop...");\nfor (let i = 0; i < 10; i++) {\n    mouseMove(10, 0);\n    delay(200);\n    mouseMove(0, 10);\n    delay(200);\n    mouseMove(-10, 0);\n    delay(200);\n    mouseMove(0, -10);\n    delay(200);\n}\nconsole.log("Jiggler finished!");\n',
                 updatedAt: new Date().toISOString()
             }
         ];
