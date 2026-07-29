@@ -83,7 +83,7 @@ function updateEndpointMonitor() {
         if (countElem) countElem.textContent = `${endpoints} / ?`;
         if (progressElem) {
             progressElem.style.width = '100%';
-            progressElem.style.background = 'var(--danger)';
+            progressElem.style.background = 'var(--accent-red)';
         }
         if (warningElem) {
             warningElem.textContent = 'Hardware limit unknown or debugfs not mounted. Deployment blocked for safety.';
@@ -97,7 +97,7 @@ function updateEndpointMonitor() {
     if (progressElem) {
         const pct = Math.min((endpoints / maxEndpoints) * 100, 100);
         progressElem.style.width = `${pct}%`;
-        progressElem.style.background = endpoints > maxEndpoints ? 'var(--danger)' : 'var(--primary)';
+        progressElem.style.background = endpoints > maxEndpoints ? 'var(--accent-red)' : 'var(--accent-cyan)';
     }
 
     if (endpoints > maxEndpoints) {
