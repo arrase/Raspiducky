@@ -166,6 +166,10 @@ func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("failed tearing down old gadget: %w", err)
 	}
 
+	if !cfg.Keyboard && !cfg.Mouse && !cfg.MassStorage.Enabled && !cfg.RNDIS.Enabled && !cfg.ECM.Enabled && !cfg.ACM.Enabled {
+		return nil
+	}
+
 	gadgetPath := gm.GadgetPath()
 	if err := os.MkdirAll(gadgetPath, 0755); err != nil {
 		return fmt.Errorf("failed creating gadget directory %s: %w", gadgetPath, err)
