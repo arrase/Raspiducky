@@ -96,10 +96,6 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	if !c.Keyboard && !c.Mouse && !c.MassStorage.Enabled && !c.RNDIS.Enabled && !c.ECM.Enabled && !c.ACM.Enabled {
-		return errors.New("at least one USB function must be enabled")
-	}
-
 	return nil
 }
 

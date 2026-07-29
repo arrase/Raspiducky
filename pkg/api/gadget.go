@@ -187,7 +187,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 
 	gm.currentStatus.Config = cfg
 	gm.currentStatus.ActiveFunctions = activeFuncs
-	gm.currentStatus.Deployed = true
+	gm.currentStatus.Deployed = len(activeFuncs) > 0
 
 	if gm.storageDir != "" {
 		if data, err := json.MarshalIndent(cfg, "", "  "); err == nil {
