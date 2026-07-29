@@ -541,53 +541,50 @@ func (gm *GadgetManager) unbindUDC() error {
 	return nil
 }
 
-func cleanupDir(dir string) error {
-	var errs []error
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, entry := range entries {
-			p := filepath.Join(dir, entry.Name())
-			if err := os.RemoveAll(p); err != nil && !os.IsNotExist(err) {
-				errs = append(errs, err)
-			}
+// removeConfigfsPath recursively cleans up Linux kernel configfs directories and symlinks.
+// Regular files in configfs are attribute files managed by the kernel and cannot be unlinked directly;
+// they are automatically cleaned up when their enclosing directory is rmdir'd.
+func removeConfigfsPath(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
 		}
-		if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+
+	if !info.IsDir() {
+		return nil
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var errs []error
+	for _, entry := range entries {
+		childPath := filepath.Join(path, entry.Name())
+		if err := removeConfigfsPath(childPath); err != nil {
 			errs = append(errs, err)
 		}
 	}
-	return errors.Join(errs...)
-}
 
-func (gm *GadgetManager) cleanupConfigsDir() error {
-	var errs []error
-	cfgDir := filepath.Join(gm.GadgetPath(), "configs", "c.1")
-
-	// Clean up config strings directory first if it exists
-	if err := cleanupDir(filepath.Join(cfgDir, "strings")); err != nil {
-		errs = append(errs, err)
-	}
-
-	// Remove all remaining entries (symlinks, attribute files) inside cfgDir
-	if err := cleanupDir(cfgDir); err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := os.Remove(filepath.Join(gm.GadgetPath(), "configs")); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
-}
-
-func (gm *GadgetManager) cleanupOSDescDir() error {
-	return cleanupDir(filepath.Join(gm.GadgetPath(), "os_desc"))
-}
-
-func (gm *GadgetManager) cleanupFunctionsDir() error {
-	return cleanupDir(filepath.Join(gm.GadgetPath(), "functions"))
-}
-
-func (gm *GadgetManager) cleanupStringsDir() error {
-	return cleanupDir(filepath.Join(gm.GadgetPath(), "strings"))
 }
 
 func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context) error {
@@ -608,29 +605,9 @@ func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	// Step 2: Clear configuration symlinks & subdirs
-	if err := gm.cleanupConfigsDir(); err != nil {
+	// Step 2: Remove entire configfs hierarchy using removeConfigfsPath
+	if err := removeConfigfsPath(gadgetPath); err != nil {
 		errs = append(errs, err)
-	}
-
-	// Step 3: Clear OS descriptors symlinks & files
-	if err := gm.cleanupOSDescDir(); err != nil {
-		errs = append(errs, err)
-	}
-
-	// Step 4: Remove functions
-	if err := gm.cleanupFunctionsDir(); err != nil {
-		errs = append(errs, err)
-	}
-
-	// Step 5: Remove strings
-	if err := gm.cleanupStringsDir(); err != nil {
-		errs = append(errs, err)
-	}
-
-	// Step 6: Remove gadget root folder
-	if err := os.RemoveAll(gadgetPath); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("failed removing gadget directory %s: %w", gadgetPath, err))
 	}
 
 	gm.deployed = false
