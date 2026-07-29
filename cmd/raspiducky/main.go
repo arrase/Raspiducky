@@ -71,18 +71,8 @@ func printUsage() {
 	fmt.Println("  -layout string   Keyboard layout (US, ES, DE, FR) (default \"US\")")
 }
 
-func runDaemon(args []string) error {
-	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
-	port := fs.String("port", ":8000", "Server port")
-	storageDir := fs.String("storage", "/var/lib/raspiducky", "Storage directory")
-	layout := fs.String("layout", "US", "Keyboard layout")
-	if err := fs.Parse(args); err != nil {
-		return fmt.Errorf("parsing flags: %w", err)
-	}
-
-	log.Printf("Starting Raspiducky Daemon %s on %s...", version, *port)
-
-	kbd, err := hid.NewKeyboard("/dev/hidg0", *layout)
+func initHIDDevices(ctx context.Context, layout string) (*hid.Keyboard, *hid.Mouse, *hid.LEDWatcher) {
+	kbd, err := hid.NewKeyboard("/dev/hidg0", layout)
 	if err != nil {
 		log.Printf("Warning: failed to initialize keyboard: %v", err)
 	}
@@ -92,7 +82,29 @@ func runDaemon(args []string) error {
 		log.Printf("Warning: failed to initialize mouse: %v", err)
 	}
 
-	ledWatcher := hid.NewLEDWatcher(context.Background(), "/dev/hidg0")
+	ledWatcher, err := hid.NewLEDWatcher(ctx, "/dev/hidg0")
+	if err != nil {
+		log.Printf("Warning: failed to initialize LED watcher: %v", err)
+	}
+
+	return kbd, mouse, ledWatcher
+}
+
+func runDaemon(args []string) error {
+	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
+	port := fs.String("port", ":8000", "Server port")
+	storageDir := fs.String("storage", "/var/lib/raspiducky", "Storage directory")
+	layout := fs.String("layout", "US", "Keyboard layout")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	log.Printf("Starting Raspiducky Daemon %s on %s...", version, *port)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	kbd, mouse, ledWatcher := initHIDDevices(ctx, *layout)
 
 	server, err := api.NewServer(api.ServerOptions{
 		StorageDir: *storageDir,
@@ -122,10 +134,10 @@ func runDaemon(args []string) error {
 	<-stop
 
 	log.Println("Shutting down daemon gracefully...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Error shutting down HTTP server: %v", err)
 	}
 	log.Println("Raspiducky Daemon stopped.")
@@ -144,37 +156,25 @@ func runScriptCLI(args []string) error {
 	}
 
 	scriptType := "js"
-	if filepath.Ext(filePath) == ".txt" {
+	if filepath.Ext(filePath) == ".txt" || filepath.Ext(filePath) == ".ducky" {
 		scriptType = "ducky"
 	}
 
-	// Parse CLI flags for layout if provided
-	fs := flag.NewFlagSet("run", flag.ExitOnError)
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	layout := fs.String("layout", "US", "Keyboard layout")
 	if err := fs.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
 
-	kbd, err := hid.NewKeyboard("/dev/hidg0", *layout)
-	if err != nil {
-		log.Printf("Warning: failed to initialize keyboard: %v", err)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	mouse, err := hid.NewMouse("/dev/hidg1")
-	if err != nil {
-		log.Printf("Warning: failed to initialize mouse: %v", err)
-	}
-
-	ledWatcher := hid.NewLEDWatcher(context.Background(), "/dev/hidg0")
+	kbd, mouse, ledWatcher := initHIDDevices(ctx, *layout)
 
 	engine := scripting.NewScriptEngine(kbd, mouse, ledWatcher)
 	runner := scripting.NewRunner(engine)
 
-	job, err := runner.SubmitJob(scriptType, string(content))
-	if err != nil {
-		return fmt.Errorf("starting script: %w", err)
-	}
-
+	job := runner.SubmitJob(scriptType, string(content))
 	log.Printf("Started script job %s (%s)", job.ID, job.ScriptType)
 
 	// Wait for job completion

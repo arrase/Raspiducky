@@ -3,6 +3,7 @@ package hid
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -31,6 +32,7 @@ type LEDWatcher struct {
 	mu         sync.Mutex
 	reader     io.Reader
 	ownsReader bool
+	running    bool
 	current    uint8
 	listeners  map[chan uint8]uint8 // channel -> mask
 	ctx        context.Context
@@ -38,7 +40,7 @@ type LEDWatcher struct {
 }
 
 // NewLEDWatcher initializes an LEDWatcher reading from devicePath.
-func NewLEDWatcher(ctx context.Context, devicePath string) *LEDWatcher {
+func NewLEDWatcher(ctx context.Context, devicePath string) (*LEDWatcher, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &LEDWatcher{
 		listeners: make(map[chan uint8]uint8),
@@ -47,26 +49,46 @@ func NewLEDWatcher(ctx context.Context, devicePath string) *LEDWatcher {
 	}
 
 	if devicePath != "" {
-		if f, err := os.Open(devicePath); err == nil {
-			w.reader = f
-			w.ownsReader = true
-			go w.readLoop()
+		f, err := os.Open(devicePath)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("opening LED watcher device %q: %w", devicePath, err)
 		}
+		w.reader = f
+		w.ownsReader = true
+		w.running = true
+		go w.readLoop()
 	}
 
-	return w
+	return w, nil
 }
 
 // SetReader sets a custom reader (for testing or non-file sources).
 func (w *LEDWatcher) SetReader(r io.Reader) {
 	w.mu.Lock()
+	if w.ownsReader && w.reader != nil {
+		if closer, ok := w.reader.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
 	w.reader = r
 	w.ownsReader = false
+	shouldStart := !w.running
+	w.running = true
 	w.mu.Unlock()
-	go w.readLoop()
+
+	if shouldStart {
+		go w.readLoop()
+	}
 }
 
 func (w *LEDWatcher) readLoop() {
+	defer func() {
+		w.mu.Lock()
+		w.running = false
+		w.mu.Unlock()
+	}()
+
 	buf := make([]byte, 8)
 	for {
 		select {
@@ -86,11 +108,7 @@ func (w *LEDWatcher) readLoop() {
 
 		n, err := r.Read(buf)
 		if err != nil {
-			if err == io.EOF || !isTemporary(err) {
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
-			continue
+			return
 		}
 
 		if n > 0 {
@@ -116,17 +134,17 @@ func (w *LEDWatcher) UpdateState(newState uint8) {
 }
 
 // ParseLEDMask converts string filters ("NUM", "CAPS", "SCROLL", "ANY") or numeric strings to bitmasks.
-func ParseLEDMask(filter string) uint8 {
+func ParseLEDMask(filter string) (uint8, error) {
 	upper := strings.ToUpper(strings.TrimSpace(filter))
 	switch upper {
 	case "NUM", "NUMLOCK":
-		return LEDNumLock
+		return LEDNumLock, nil
 	case "CAPS", "CAPSLOCK":
-		return LEDCapsLock
+		return LEDCapsLock, nil
 	case "SCROLL", "SCROLLLOCK":
-		return LEDScrollLock
+		return LEDScrollLock, nil
 	case "ANY", "":
-		return LEDAny
+		return LEDAny, nil
 	}
 
 	var mask uint8
@@ -140,9 +158,9 @@ func ParseLEDMask(filter string) uint8 {
 		mask |= LEDScrollLock
 	}
 	if mask == 0 {
-		return LEDAny
+		return 0, fmt.Errorf("unrecognized LED mask string %q", filter)
 	}
-	return mask
+	return mask, nil
 }
 
 // WaitLED waits for a host LED state change matching mask within the given timeout.
@@ -179,25 +197,17 @@ func (w *LEDWatcher) WaitLED(ctx context.Context, mask uint8, timeout time.Durat
 }
 
 // Close stops the LEDWatcher.
-func (w *LEDWatcher) Close() {
+func (w *LEDWatcher) Close() error {
 	w.cancel()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	var closeErr error
 	if w.ownsReader && w.reader != nil {
 		if closer, ok := w.reader.(io.Closer); ok {
-			_ = closer.Close()
+			closeErr = closer.Close()
 		}
+		w.reader = nil
 	}
-}
-
-// isTemporary checks if an error is temporary and retryable.
-func isTemporary(err error) bool {
-	type temporary interface {
-		Temporary() bool
-	}
-	var t temporary
-	if errors.As(err, &t) {
-		return t.Temporary()
-	}
-	return false
+	w.running = false
+	return closeErr
 }

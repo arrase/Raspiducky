@@ -21,7 +21,6 @@ type Keyboard struct {
 	activeLayout     *Layout
 	keyDelayMs       int
 	keyDelayJitterMs int
-	ledWatcher       *LEDWatcher
 }
 
 // NewKeyboard initializes a new Keyboard connected to the given device path with the specified layout.
@@ -102,9 +101,10 @@ func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
 
 	if kbd.writer == nil && kbd.ownsWriter && kbd.devicePath != "" {
 		f, err := os.OpenFile(kbd.devicePath, os.O_WRONLY|os.O_SYNC, 0666)
-		if err == nil {
-			kbd.writer = f
+		if err != nil {
+			return fmt.Errorf("opening device %q: %w", kbd.devicePath, err)
 		}
+		kbd.writer = f
 	}
 
 	if kbd.writer == nil {
@@ -188,8 +188,7 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 
 		reports, ok := layout.MapRune(r)
 		if !ok {
-			// Skip unmapped characters
-			continue
+			return fmt.Errorf("unmapped rune %q in layout %s", r, layout.Name)
 		}
 
 		for _, report := range reports {

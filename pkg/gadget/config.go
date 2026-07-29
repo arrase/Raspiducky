@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	hexIDRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{4}$`)
+	ErrNoFunctionsEnabled = errors.New("at least one USB function must be enabled")
+	hexIDRegex            = regexp.MustCompile(`^0x[0-9a-fA-F]{4}$`)
 )
 
 // EthernetConfig holds MAC address configuration for network interfaces (RNDIS/ECM).
@@ -86,6 +87,10 @@ func (c Config) Validate() error {
 		return errors.New("manufacturer, product, and serial string descriptors cannot be empty")
 	}
 
+	if !c.Keyboard && !c.Mouse && !c.MassStorage.Enabled && !c.RNDIS.Enabled && !c.ECM.Enabled && !c.ACM.Enabled {
+		return ErrNoFunctionsEnabled
+	}
+
 	if err := c.RNDIS.Validate("RNDIS"); err != nil {
 		return err
 	}
@@ -103,13 +108,13 @@ func (c Config) Validate() error {
 func (c Config) CountINEndpoints() int {
 	inEndpoints := 0
 	if c.Keyboard {
-		inEndpoints += 1
+		inEndpoints++
 	}
 	if c.Mouse {
-		inEndpoints += 1
+		inEndpoints++
 	}
 	if c.MassStorage.Enabled {
-		inEndpoints += 1 // Bulk IN
+		inEndpoints++ // Bulk IN
 	}
 	if c.RNDIS.Enabled {
 		inEndpoints += 2 // Interrupt IN, Bulk IN

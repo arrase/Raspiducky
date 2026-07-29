@@ -20,15 +20,6 @@ type GadgetConfig struct {
 	KeyboardLayout string `json:"keyboardLayout"`
 }
 
-// GadgetStatusResponse represents the current status of the USB gadget
-type GadgetStatusResponse struct {
-	Deployed        bool         `json:"deployed"`
-	ActiveFunctions []string     `json:"activeFunctions"`
-	UDC             string       `json:"udc"`
-	MaxEndpoints    int          `json:"maxEndpoints"`
-	Config          GadgetConfig `json:"config"`
-}
-
 // GadgetStatus represents the active status of the USB gadget subsystem.
 type GadgetStatus struct {
 	Deployed        bool         `json:"deployed"`
@@ -74,9 +65,9 @@ type LEDState struct {
 
 // WSMessage format for broadcasting real-time events to connected clients.
 type WSMessage struct {
-	Type    string      `json:"type"` // "log", "led_state", "gadget_status", "job_status"
-	Level   string      `json:"level,omitempty"`
-	Source  string      `json:"source,omitempty"`
-	Message string      `json:"message,omitempty"`
-	Payload interface{} `json:"payload,omitempty"`
+	Type    string `json:"type"` // "log", "led_state", "gadget_status", "job_status"
+	Level   string `json:"level,omitempty"`
+	Source  string `json:"source,omitempty"`
+	Message string `json:"message,omitempty"`
+	Payload any    `json:"payload,omitempty"`
 }

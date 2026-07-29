@@ -15,9 +15,9 @@ import (
 
 // RunnerEngine manages payload script execution jobs and live event streaming.
 type RunnerEngine struct {
-	mu        sync.RWMutex
-	activeJob *JobStatus
-	cancelFn  context.CancelFunc
+	mu         sync.RWMutex
+	activeJob  *JobStatus
+	cancelFn   context.CancelFunc
 	hub        *Hub
 	keyboard   *hid.Keyboard
 	mouse      *hid.Mouse
@@ -164,15 +164,6 @@ func (re *RunnerEngine) broadcastJobStatus(job JobStatus) {
 		re.hub.Broadcast(WSMessage{
 			Type:    "job_status",
 			Payload: job,
-		})
-	}
-}
-
-func (re *RunnerEngine) broadcastLEDState(leds LEDState) {
-	if re.hub != nil {
-		re.hub.Broadcast(WSMessage{
-			Type:    "led_state",
-			Payload: leds,
 		})
 	}
 }

@@ -3,6 +3,7 @@ package hid
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -17,6 +18,28 @@ type Layout struct {
 	Name     string
 	Runes    map[rune][]KeyboardReport
 	KeyNames map[string]KeyCombo
+}
+
+// Clone creates a deep copy of the Layout to prevent data races when accessed concurrently.
+func (l *Layout) Clone() *Layout {
+	if l == nil {
+		return nil
+	}
+	newRunes := make(map[rune][]KeyboardReport, len(l.Runes))
+	for k, v := range l.Runes {
+		reportsCopy := make([]KeyboardReport, len(v))
+		copy(reportsCopy, v)
+		newRunes[k] = reportsCopy
+	}
+	newKeyNames := make(map[string]KeyCombo, len(l.KeyNames))
+	for k, v := range l.KeyNames {
+		newKeyNames[k] = v
+	}
+	return &Layout{
+		Name:     l.Name,
+		Runes:    newRunes,
+		KeyNames: newKeyNames,
+	}
 }
 
 var commonKeyNames = map[string]KeyCombo{
@@ -81,9 +104,14 @@ var commonKeyNames = map[string]KeyCombo{
 	"F12":         {Modifiers: 0, KeyCode: KeyF12},
 }
 
-var layouts = map[string]*Layout{}
+var (
+	layoutsMu sync.RWMutex
+	layouts   = map[string]*Layout{}
+)
 
 func init() {
+	layoutsMu.Lock()
+	defer layoutsMu.Unlock()
 	layouts["US"] = buildUSLayout()
 	layouts["DE"] = buildDELayout()
 	layouts["ES"] = buildESLayout()
@@ -93,8 +121,11 @@ func init() {
 // GetLayout returns the Layout struct for the given layout name ("us", "de", "es", "fr").
 func GetLayout(name string) (*Layout, error) {
 	upper := strings.ToUpper(strings.TrimSpace(name))
-	if l, ok := layouts[upper]; ok {
-		return l, nil
+	layoutsMu.RLock()
+	l, ok := layouts[upper]
+	layoutsMu.RUnlock()
+	if ok {
+		return l.Clone(), nil
 	}
 	return nil, fmt.Errorf("unsupported layout: %s", name)
 }

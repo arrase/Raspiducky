@@ -7,6 +7,9 @@ bin/
 *.so
 *.dylib
 /raspiducky
+.agents
+PROJECT.md
+
 
 # Test binaries
 *.test

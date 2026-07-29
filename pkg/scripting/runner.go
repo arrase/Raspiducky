@@ -80,7 +80,7 @@ func NewRunner(engine *ScriptEngine) *Runner {
 }
 
 // SubmitJob starts a new script job asynchronously in the background.
-func (r *Runner) SubmitJob(scriptType string, source string) (*Job, error) {
+func (r *Runner) SubmitJob(scriptType string, source string) *Job {
 	r.mu.Lock()
 	r.counter++
 	jobID := fmt.Sprintf("job-%d-%d", time.Now().UnixNano(), r.counter)
@@ -99,7 +99,7 @@ func (r *Runner) SubmitJob(scriptType string, source string) (*Job, error) {
 
 	go r.executeJob(ctx, job)
 
-	return job, nil
+	return job
 }
 
 func (r *Runner) executeJob(ctx context.Context, job *Job) {

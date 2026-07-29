@@ -2,7 +2,7 @@
 
 **Raspiducky** is a modern, high-performance, lightweight USB Gadget and DuckyScript/HIDScript execution appliance for Raspberry Pi Zero W (and similar boards supporting USB OTG / USB host mode). 
 
-It is designed as a complete, modern rewrite of the legacy `P4wnP1 A.L.O.A.` project, eliminating heavy dependencies (like Kali Linux) in favor of running as a **single Go executable** on standard, lightweight Linux distributions such as **Raspberry Pi OS Lite**.
+It is designed to run as a **single Go executable** on standard, lightweight Linux distributions such as **Raspberry Pi OS Lite**.
 
 ---
 
