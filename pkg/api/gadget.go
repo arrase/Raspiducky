@@ -110,7 +110,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		}
 	}
 
-	activeFuncs := make([]string, 0, 5)
+	activeFuncs := make([]string, 0, 7)
 	if cfg.Keyboard {
 		activeFuncs = append(activeFuncs, "hid.usb0")
 	}
@@ -121,7 +121,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		activeFuncs = append(activeFuncs, "mass_storage.usb0")
 	}
 	if cfg.Ethernet {
-		activeFuncs = append(activeFuncs, "rndis.usb0")
+		activeFuncs = append(activeFuncs, "rndis.usb0", "ecm.usb0")
 	}
 	if cfg.Serial {
 		activeFuncs = append(activeFuncs, "acm.usb0")
@@ -140,7 +140,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	if cfg.Storage {
 		size := cfg.StorageSizeMB
 		if size <= 0 {
-			size = 100 // Default to 100MB if invalid or 0
+			size = 100
 		}
 		diskPath := "/var/lib/raspiducky/disk.img"
 		if gm.storageDir != "" {
@@ -150,15 +150,20 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 			return GadgetStatus{}, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
 		}
 		gadgetCfg.MassStorage = gadget.MassStorageConfig{
-			Enabled: true,
+			Enabled:     true,
 			BackingFile: diskPath,
 		}
 	}
 	if cfg.Ethernet {
 		gadgetCfg.RNDIS = gadget.EthernetConfig{
-			Enabled: true,
+			Enabled:  true,
 			HostAddr: "02:00:00:00:00:01",
-			DevAddr: "02:00:00:00:00:02",
+			DevAddr:  "02:00:00:00:00:02",
+		}
+		gadgetCfg.ECM = gadget.EthernetConfig{
+			Enabled:  true,
+			HostAddr: "02:00:00:00:00:03",
+			DevAddr:  "02:00:00:00:00:04",
 		}
 	}
 	if cfg.Serial {
