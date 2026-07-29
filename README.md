@@ -89,6 +89,19 @@ Running this command again in the future will automatically update Raspiducky to
 > * **Supported RPi Ports**: Raspberry Pi Zero / Zero W / Zero 2 W (Micro-USB USB port), Raspberry Pi 3A+ / A+ (Type-A OTG port), Raspberry Pi 4B / 5 (USB-C power/data port).
 > * **Unsupported RPi Ports**: Standard Type-A ports on Raspberry Pi 1B, 2B, 3B, and 3B+ pass through an onboard LAN9512/LAN9514/LAN7515 USB hub chip which prevents USB Device/Gadget mode.
 
+#### 🚦 Hardware Endpoint Limits
+
+Depending on your SBC's USB controller (e.g., the DWC2 controller on Raspberry Pi Zero), there is a strict hardware limit on the maximum number of **USB IN Endpoints** that can be active simultaneously (typically **7 IN Endpoints** for the Raspberry Pi Zero family). 
+
+Each USB emulation function consumes a specific number of endpoints:
+* **USB Keyboard (HID)**: 1 Endpoint
+* **USB Mouse (HID)**: 1 Endpoint
+* **Mass Storage**: 1 Endpoint
+* **USB Serial Console (ACM)**: 2 Endpoints
+* **USB Ethernet (RNDIS/ECM)**: 4 Endpoints (2 for RNDIS, 2 for ECM)
+
+The Raspiducky Web Dashboard includes a **Hardware Endpoints Used** progress bar that dynamically tracks your configuration. It will automatically prevent you from deploying a combination of functions that exceeds your board's physical hardware limits.
+
 #### 📋 Supported Boards & Binary Asset Matrix
 
 | Asset Name | Architecture | Target SBC Boards | USB OTG Port | Go Build Command |
