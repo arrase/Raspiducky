@@ -1,6 +1,6 @@
 # 🦆⚡ Raspiducky
 
-> A modern, high-performance, and lightweight USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi Zero W (and compatible SBCs).
+A modern, high-performance, and lightweight USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi Zero W (and compatible SBCs).
 
 Designed to run as a **single Go executable** on lightweight Linux distributions (like Raspberry Pi OS Lite), Raspiducky turns your Pi into a powerful, multi-purpose USB attack/automation tool.
 
