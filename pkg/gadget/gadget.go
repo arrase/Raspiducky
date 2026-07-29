@@ -296,6 +296,9 @@ func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStor
 	if err := writeFile(filepath.Join(lunDir, "ro"), []byte(roVal)); err != nil {
 		return err
 	}
+	if err := writeFile(filepath.Join(lunDir, "removable"), []byte("1")); err != nil {
+		return err
+	}
 	if err := writeFile(filepath.Join(lunDir, "nofua"), []byte("0")); err != nil {
 		return err
 	}
