@@ -134,11 +134,24 @@
                                     <div class="toggle-info">
                                         <span class="toggle-title">USB Serial Console (ACM)</span>
                                         <span class="toggle-desc">Emulate CDC-ACM Serial Port</span>
-                                    </div>
                                     <label class="switch">
                                         <input type="checkbox" id="gadget-serial">
                                         <span class="slider"></span>
                                     </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Hardware Endpoint Limit Monitor -->
+                            <div class="endpoint-monitor">
+                                <div style="display: flex; justify-content: space-between; margin-top: 15px; font-size: 0.9em;">
+                                    <span>Hardware Endpoints Used</span>
+                                    <span id="endpoint-count" style="font-weight: bold;">2 / 7</span>
+                                </div>
+                                <div class="progress-bar-container" style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 8px; margin-top: 5px; overflow: hidden;">
+                                    <div id="endpoint-progress" style="background: var(--primary); height: 100%; width: 28%; transition: width 0.3s, background 0.3s;"></div>
+                                </div>
+                                <div id="endpoint-warning" style="color: var(--danger); font-size: 0.85em; margin-top: 5px; display: none;">
+                                    Hardware limit exceeded. The DWC2 controller supports a maximum of 7 IN endpoints.
                                 </div>
                             </div>
                         </div>
