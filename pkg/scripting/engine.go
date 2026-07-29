@@ -130,7 +130,10 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 
 		if e.ledWatcher != nil {
-			mask := hid.ParseLEDMask(filter)
+			mask, err := hid.ParseLEDMask(filter)
+			if err != nil {
+				panic(vm.ToValue(err.Error()))
+			}
 			state, err := e.ledWatcher.WaitLED(ctx, mask, time.Duration(timeoutMs)*time.Millisecond)
 			if err != nil {
 				panic(vm.ToValue(err.Error()))

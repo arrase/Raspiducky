@@ -28,7 +28,7 @@ type GadgetManager struct {
 }
 
 // NewGadgetManager initializes a new GadgetManager instance.
-func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string) *GadgetManager {
+func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string, gadgetOpts ...gadget.Option) *GadgetManager {
 	initialCfg := GadgetConfig{
 		Keyboard:       true,
 		Mouse:          true,
@@ -59,8 +59,19 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string) *Gadg
 		udcDir := filepath.Join(storageDir, "udc")
 		_ = os.MkdirAll(udcDir, 0755)
 		_ = os.WriteFile(filepath.Join(udcDir, "dummy.udc"), []byte(""), 0644)
-		opts = append(opts, gadget.WithBaseDir(filepath.Join(storageDir, "usb_gadget")), gadget.WithUDCDir(udcDir))
+
+		debugFSDir := filepath.Join(storageDir, "debugfs")
+		_ = os.MkdirAll(filepath.Join(debugFSDir, "dummy.udc"), 0755)
+		_ = os.WriteFile(filepath.Join(debugFSDir, "dummy.udc", "hw_params"), []byte("num_dev_ep: 16\n"), 0644)
+		_ = os.WriteFile(filepath.Join(debugFSDir, "devices"), []byte(""), 0644)
+
+		opts = append(opts,
+			gadget.WithBaseDir(filepath.Join(storageDir, "usb_gadget")),
+			gadget.WithUDCDir(udcDir),
+			gadget.WithDebugFSDir(debugFSDir),
+		)
 	}
+	opts = append(opts, gadgetOpts...)
 
 	manager := &GadgetManager{
 		hub:        hub,
@@ -74,12 +85,12 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string) *Gadg
 			Config:          initialCfg,
 		},
 	}
-	
+
 	// Deploy config at startup
 	if _, err := manager.UpdateConfig(manager.currentStatus.Config); err != nil {
 		log.Printf("[Gadget] Could not deploy initial gadget config: %v", err)
 	}
-	
+
 	return manager
 }
 
@@ -87,18 +98,24 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string) *Gadg
 func (gm *GadgetManager) GetStatus() GadgetStatus {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
+	status := gm.currentStatus
+	if gm.currentStatus.ActiveFunctions != nil {
+		status.ActiveFunctions = make([]string, len(gm.currentStatus.ActiveFunctions))
+		copy(status.ActiveFunctions, gm.currentStatus.ActiveFunctions)
+	}
+
 	if udc, err := gm.gm.GetUDCName(); err == nil {
-		gm.currentStatus.UDC = udc
+		status.UDC = udc
 	}
-	
+
 	if maxEp, err := gm.gm.GetMaxEndpoints(); err == nil {
-		gm.currentStatus.MaxEndpoints = maxEp
+		status.MaxEndpoints = maxEp
 	} else {
-		gm.currentStatus.MaxEndpoints = 0
+		status.MaxEndpoints = 0
 	}
-	
-	return gm.currentStatus
+
+	return status
 }
 
 // UpdateConfig applies and deploys a new USB gadget configuration.
@@ -142,7 +159,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		Keyboard:     cfg.Keyboard,
 		Mouse:        cfg.Mouse,
 	}
-	
+
 	if cfg.Storage {
 		size := cfg.StorageSizeMB
 		if size <= 0 {
@@ -194,7 +211,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 			_ = os.WriteFile(filepath.Join(gm.storageDir, "gadget_config.json"), data, 0644)
 		}
 	}
-	
+
 	if udc, err := gm.gm.GetUDCName(); err == nil {
 		gm.currentStatus.UDC = udc
 	}
@@ -222,6 +239,9 @@ func validateGadgetConfig(cfg GadgetConfig) error {
 	if cfg.Product == "" {
 		return errors.New("product string cannot be empty")
 	}
+	if !cfg.Keyboard && !cfg.Mouse && !cfg.Storage && !cfg.Ethernet && !cfg.Serial {
+		return errors.New("at least one USB function must be enabled")
+	}
 	return nil
 }
 
@@ -231,20 +251,23 @@ func ensureBackingFile(path string, sizeMB int) error {
 		if err != nil {
 			return err
 		}
-		// Create file of sizeMB
+		defer f.Close()
+
 		if err := f.Truncate(int64(sizeMB) * 1024 * 1024); err != nil {
-			f.Close()
 			return err
 		}
-		f.Close()
 
-		cmd := exec.Command("/usr/sbin/mkfs.vfat", path)
-		if err := cmd.Run(); err != nil {
-			// fallback if mkfs.vfat is in PATH instead
-			cmd2 := exec.Command("mkfs.vfat", path)
-			if err2 := cmd2.Run(); err2 != nil {
-				return fmt.Errorf("formatting disk image: %v, %v", err, err2)
+		mkfsPath, err := exec.LookPath("mkfs.vfat")
+		if err != nil {
+			if _, statErr := os.Stat("/usr/sbin/mkfs.vfat"); statErr == nil {
+				mkfsPath = "/usr/sbin/mkfs.vfat"
+			} else {
+				return fmt.Errorf("mkfs.vfat executable not found: %w", err)
 			}
+		}
+		cmd := exec.Command(mkfsPath, path)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("formatting disk image with %s: %w", mkfsPath, err)
 		}
 	}
 	return nil

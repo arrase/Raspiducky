@@ -23,7 +23,7 @@ func ParseDuckyScript(duckySource string) (string, error) {
 		}
 
 		// Comments
-		if strings.HasPrefix(line, "REM") {
+		if line == "REM" || strings.HasPrefix(line, "REM ") {
 			comment := strings.TrimPrefix(line, "REM")
 			comment = strings.TrimSpace(comment)
 			jsLines = append(jsLines, fmt.Sprintf("// %s", comment))
@@ -34,8 +34,7 @@ func ParseDuckyScript(duckySource string) (string, error) {
 		if strings.HasPrefix(line, "DEFAULT_DELAY") || strings.HasPrefix(line, "DEFAULTDELAY") {
 			parts := strings.Fields(line)
 			if len(parts) >= 2 {
-				delayVal, err := strconv.Atoi(parts[1])
-				if err == nil {
+				if delayVal, err := strconv.Atoi(parts[1]); err == nil {
 					defaultDelay = delayVal
 					jsLines = append(jsLines, fmt.Sprintf("// Default delay set to %d ms", defaultDelay))
 				}
@@ -47,13 +46,10 @@ func ParseDuckyScript(duckySource string) (string, error) {
 		if strings.HasPrefix(line, "REPEAT") {
 			parts := strings.Fields(line)
 			if len(parts) >= 2 && lastJSCommand != "" {
-				count, err := strconv.Atoi(parts[1])
-				if err == nil && count > 0 {
-					for i := 0; i < count; i++ {
-						jsLines = append(jsLines, lastJSCommand)
-						if defaultDelay > 0 {
-							jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
-						}
+				if count, err := strconv.Atoi(parts[1]); err == nil && count > 0 {
+					jsLines = append(jsLines, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, lastJSCommand))
+					if defaultDelay > 0 {
+						jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
 					}
 				}
 			}

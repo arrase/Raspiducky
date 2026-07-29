@@ -57,9 +57,10 @@ func (m *Mouse) SetWriter(w io.Writer) {
 func (m *Mouse) writeReport(report []byte) error {
 	if m.writer == nil && m.ownsWriter && m.devicePath != "" {
 		f, err := os.OpenFile(m.devicePath, os.O_WRONLY|os.O_SYNC, 0666)
-		if err == nil {
-			m.writer = f
+		if err != nil {
+			return fmt.Errorf("opening device %q: %w", m.devicePath, err)
 		}
+		m.writer = f
 	}
 
 	if m.writer == nil {
@@ -112,25 +113,30 @@ func (m *Mouse) MoveTo(x, y uint16) error {
 }
 
 // parseButton converts a string button representation to its bitmask value.
-func parseButton(b string) uint8 {
+func parseButton(b string) (uint8, error) {
 	lower := strings.ToLower(strings.TrimSpace(b))
 	switch lower {
 	case "left", "1", "b1", "button1", "":
-		return MouseButtonLeft
+		return MouseButtonLeft, nil
 	case "right", "2", "b2", "button2":
-		return MouseButtonRight
+		return MouseButtonRight, nil
 	case "middle", "3", "b3", "button3":
-		return MouseButtonMiddle
+		return MouseButtonMiddle, nil
+	default:
+		return 0, fmt.Errorf("unrecognized mouse button %q", b)
 	}
-	return MouseButtonLeft
 }
 
 // ButtonDown depresses a mouse button without releasing it.
 func (m *Mouse) ButtonDown(button string) error {
+	btn, err := parseButton(button)
+	if err != nil {
+		return err
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	btn := parseButton(button)
 	m.buttons |= btn
 
 	var report [6]byte
@@ -142,10 +148,14 @@ func (m *Mouse) ButtonDown(button string) error {
 
 // ButtonUp releases a mouse button.
 func (m *Mouse) ButtonUp(button string) error {
+	btn, err := parseButton(button)
+	if err != nil {
+		return err
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	btn := parseButton(button)
 	m.buttons &= ^btn
 
 	var report [6]byte
