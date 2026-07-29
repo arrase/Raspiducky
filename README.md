@@ -218,15 +218,5 @@ type("NumLock was toggled on host!\n");
 
 ---
 
-## 🧪 Testing
-
-Run tests across the codebase:
-```bash
-go test -v ./...
-```
-*(Note: Unit test files `*_test.go` can be added across `pkg/` packages as the suite expands).*
-
----
-
 ## 📄 License
 This project is released under the **MIT License**.
