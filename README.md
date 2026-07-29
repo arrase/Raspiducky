@@ -16,7 +16,7 @@ It is designed to run as a **single Go executable** on standard, lightweight Lin
   * **USB Network**: CDC ECM (Linux/Mac) and RNDIS (Windows) with custom MAC addresses and Windows OS descriptors.
   * **USB Serial**: CDC ACM serial device interface.
 * **Dual Scripting Engines**:
-  * **JavaScript Engine (Goja)**: Pure Go ECMAScript 5.1+ runtime with native USB HID bindings (`type()`, `press()`, `delay()`, `layout()`, `typingSpeed()`, `waitLED()`, `mouseMove()`, `mouseClick()`).
+  * **JavaScript Engine (Goja)**: Pure Go ECMAScript 5.1+ runtime with native USB HID bindings (`type()`, `press()`, `delay()`, `layout()`, `typingSpeed()`, `waitLED()`, `mouseMove()`, `mouseMoveTo()`, `mouseClick()`).
   * **DuckyScript Parser**: Transparently parses and executes standard Rubber Ducky `.txt` scripts.
 * **Host Keyboard LED State Listener**: Reads output report updates from `/dev/hidg0` (NUMLOCK, CAPSLOCK, SCROLLLOCK) enabling synchronization and payload triggering based on target host interactions.
 * **Modern Embedded Web Dashboard**: Sleek, dark-mode single-page dashboard with real-time WebSocket log streaming, payload editor, job manager, and gadget controls.
@@ -104,7 +104,7 @@ Each USB emulation function consumes a specific number of endpoints:
 * **USB Serial Console (ACM)**: 2 Endpoints
 * **USB Ethernet (RNDIS/ECM)**: 4 Endpoints (2 for RNDIS, 2 for ECM)
 
-The Raspiducky Web Dashboard includes a **Hardware Endpoints Used** progress bar that dynamically reads your specific board's limits directly from the kernel (`/sys/module/dwc2/...` or `GetMaxEndpoints()`). It will automatically adapt the UI and prevent you from deploying a combination of functions that exceeds your specific board's physical capabilities.
+The Raspiducky Web Dashboard includes a **Hardware Endpoints Used** progress bar that dynamically reads your specific board's limits directly from the kernel DebugFS (`/sys/kernel/debug/usb/<udcName>/hw_params` via `GetMaxEndpoints()`). It will automatically adapt the UI and prevent you from deploying a combination of functions that exceeds your specific board's physical capabilities.
 
 #### 📋 Supported Boards & Binary Asset Matrix
 
@@ -220,10 +220,11 @@ type("NumLock was toggled on host!\n");
 
 ## 🧪 Testing
 
-Run all unit tests across the codebase:
+Run tests across the codebase:
 ```bash
 go test -v ./...
 ```
+*(Note: Unit test files `*_test.go` can be added across `pkg/` packages as the suite expands).*
 
 ---
 

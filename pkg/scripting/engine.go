@@ -165,6 +165,21 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		return err
 	}
 
+	// Inject `mouseMoveTo(x, y)`
+	err = vm.Set("mouseMoveTo", func(call goja.FunctionCall) goja.Value {
+		x := uint16(call.Argument(0).ToInteger())
+		y := uint16(call.Argument(1).ToInteger())
+		if e.mouse != nil {
+			if err := e.mouse.MoveTo(x, y); err != nil {
+				panic(vm.ToValue(err.Error()))
+			}
+		}
+		return goja.Undefined()
+	})
+	if err != nil {
+		return err
+	}
+
 	// Inject `mouseClick(button)`
 	err = vm.Set("mouseClick", func(call goja.FunctionCall) goja.Value {
 		btn := call.Argument(0).String()
