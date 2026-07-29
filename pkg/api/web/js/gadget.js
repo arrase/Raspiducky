@@ -116,15 +116,35 @@ function updateEndpointMonitor() {
 document.addEventListener('DOMContentLoaded', () => {
     ['gadget-keyboard', 'gadget-mouse', 'gadget-storage', 'gadget-ethernet', 'gadget-serial'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('change', updateEndpointMonitor);
+        if (el) {
+            el.addEventListener('change', async (e) => {
+                updateEndpointMonitor();
+                const applyBtn = document.getElementById('btn-apply-gadget');
+                if (applyBtn && applyBtn.disabled) {
+                    // Revert toggle if hardware limit exceeded
+                    e.target.checked = !e.target.checked;
+                    updateEndpointMonitor();
+                    return;
+                }
+                await applyGadgetConfig();
+            });
+        }
     });
 });
+
+function setTogglesDisabled(disabled) {
+    ['gadget-keyboard', 'gadget-mouse', 'gadget-storage', 'gadget-ethernet', 'gadget-serial'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+    });
+}
 
 async function applyGadgetConfig(event) {
     if (event) event.preventDefault();
 
     const applyBtn = document.getElementById('btn-apply-gadget');
     if (applyBtn) applyBtn.disabled = true;
+    setTogglesDisabled(true);
 
     const payload = {
         keyboard: document.getElementById('gadget-keyboard').checked,
@@ -152,5 +172,6 @@ async function applyGadgetConfig(event) {
         appendLog('ERROR', 'GADGET', `Failed to deploy USB gadget config: ${err.message}`);
     } finally {
         if (applyBtn) applyBtn.disabled = false;
+        setTogglesDisabled(false);
     }
 }
