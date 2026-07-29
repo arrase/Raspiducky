@@ -432,8 +432,8 @@ func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context) error {
 
 	// Step 1: Unbind UDC
 	udcPath := filepath.Join(gadgetPath, "UDC")
-	if data, err := os.ReadFile(udcPath); err == nil && len(data) > 0 {
-		_ = writeFile(udcPath, []byte(""))
+	if data, err := os.ReadFile(udcPath); err == nil && len(data) > 1 {
+		_ = writeFile(udcPath, []byte("\n"))
 		// Allow kernel time to fully release the USB device controller
 		time.Sleep(500 * time.Millisecond)
 	}
