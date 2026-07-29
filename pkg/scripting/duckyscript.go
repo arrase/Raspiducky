@@ -133,6 +133,17 @@ func translateLineToJS(line string) string {
 		}
 		return fmt.Sprintf("mouseMove(%d, %d);", x, y)
 
+	case "MOUSE_MOVE_ABS", "MOUSE_MOVETO":
+		f := strings.Fields(arg)
+		x, y := 0, 0
+		if len(f) >= 1 {
+			x, _ = strconv.Atoi(f[0])
+		}
+		if len(f) >= 2 {
+			y, _ = strconv.Atoi(f[1])
+		}
+		return fmt.Sprintf("mouseMoveTo(%d, %d);", x, y)
+
 	case "MOUSE_CLICK":
 		btn := strings.TrimSpace(arg)
 		if btn == "" {
