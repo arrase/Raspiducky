@@ -91,7 +91,11 @@ Running this command again in the future will automatically update Raspiducky to
 
 #### 🚦 Hardware Endpoint Limits
 
-Depending on your SBC's USB controller (e.g., the DWC2 controller on Raspberry Pi Zero), there is a strict hardware limit on the maximum number of **USB IN Endpoints** that can be active simultaneously (typically **7 IN Endpoints** for the Raspberry Pi Zero family). 
+Depending on your SBC's USB controller, there is a physical hardware limit on the maximum number of **USB IN Endpoints** that can be active simultaneously. 
+
+* **Raspberry Pi Zero / 1 / 2 / 3 (DWC2 Controller)**: Limited to **7 IN Endpoints**.
+* **Raspberry Pi 4 / 5 (DWC3 Controller)**: Limited to **15 IN Endpoints**.
+* **Other SBCs (e.g., Orange Pi, NanoPi)**: Varies depending on the SoC's USB controller.
 
 Each USB emulation function consumes a specific number of endpoints:
 * **USB Keyboard (HID)**: 1 Endpoint
@@ -100,7 +104,7 @@ Each USB emulation function consumes a specific number of endpoints:
 * **USB Serial Console (ACM)**: 2 Endpoints
 * **USB Ethernet (RNDIS/ECM)**: 4 Endpoints (2 for RNDIS, 2 for ECM)
 
-The Raspiducky Web Dashboard includes a **Hardware Endpoints Used** progress bar that dynamically tracks your configuration. It will automatically prevent you from deploying a combination of functions that exceeds your board's physical hardware limits.
+The Raspiducky Web Dashboard includes a **Hardware Endpoints Used** progress bar that dynamically reads your specific board's limits directly from the kernel (`/sys/module/dwc2/...` or `GetMaxEndpoints()`). It will automatically adapt the UI and prevent you from deploying a combination of functions that exceeds your specific board's physical capabilities.
 
 #### 📋 Supported Boards & Binary Asset Matrix
 
