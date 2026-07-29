@@ -183,6 +183,19 @@ if [ -f "/etc/modules" ]; then
     fi
 fi
 
+# Ensure debugfs is mounted (required for dynamic USB endpoint limits detection)
+info "Ensuring debugfs is mounted at /sys/kernel/debug..."
+if [ -f "/etc/fstab" ]; then
+    if ! grep -q "debugfs" /etc/fstab; then
+        echo "debugfs /sys/kernel/debug debugfs defaults 0 0" >> /etc/fstab
+        info "Added 'debugfs' to /etc/fstab to persist mount across reboots."
+    fi
+fi
+if ! mountpoint -q /sys/kernel/debug; then
+    mount -t debugfs none /sys/kernel/debug 2>/dev/null || true
+    info "Mounted debugfs dynamically."
+fi
+
 # Load kernel modules dynamically if available
 info "Loading kernel modules (dwc2, libcomposite)..."
 modprobe dwc2 2>/dev/null || true
