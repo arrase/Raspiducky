@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -109,12 +111,50 @@ func (gm *GadgetManager) GetUDCName() (string, error) {
 	return entries[0].Name(), nil
 }
 
+func (gm *GadgetManager) GetMaxEndpoints() (int, error) {
+	udcName, err := gm.GetUDCName()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get UDC name: %w", err)
+	}
+
+	hwParamsPath := filepath.Join("/sys/kernel/debug/usb", udcName, "hw_params")
+	data, err := os.ReadFile(hwParamsPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read hw_params (is debugfs mounted at /sys/kernel/debug?): %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "num_dev_ep") {
+			parts := strings.Split(line, ":")
+			if len(parts) == 2 {
+				val, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+				if err != nil {
+					return 0, fmt.Errorf("invalid num_dev_ep value format: %w", err)
+				}
+				return val, nil
+			}
+		}
+	}
+
+	return 0, errors.New("num_dev_ep not found in hw_params")
+}
+
 func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid gadget config: %w", err)
+	}
+
+	maxEp, err := gm.GetMaxEndpoints()
+	if err != nil {
+		return fmt.Errorf("critical: cannot verify hardware endpoint limits: %w", err)
+	}
+
+	if epCount := cfg.CountINEndpoints(); epCount > maxEp {
+		return fmt.Errorf("configuration requires %d IN endpoints, but the hardware only supports max %d", epCount, maxEp)
 	}
 
 	if err := ctx.Err(); err != nil {

@@ -92,6 +92,12 @@ func (gm *GadgetManager) GetStatus() GadgetStatus {
 		gm.currentStatus.UDC = udc
 	}
 	
+	if maxEp, err := gm.gm.GetMaxEndpoints(); err == nil {
+		gm.currentStatus.MaxEndpoints = maxEp
+	} else {
+		gm.currentStatus.MaxEndpoints = 0
+	}
+	
 	return gm.currentStatus
 }
 
