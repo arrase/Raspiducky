@@ -196,6 +196,18 @@ if ! mountpoint -q /sys/kernel/debug; then
     info "Mounted debugfs dynamically."
 fi
 
+# Configure udev rules for HID gadget devices (/dev/hidg*)
+info "Configuring udev permissions for HID gadget devices (/dev/hidg*)..."
+cat << 'EOF' > /etc/udev/rules.d/99-raspiducky-hid.rules
+KERNEL=="hidg*", MODE="0666"
+EOF
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules 2>/dev/null || true
+    udevadm trigger --subsystem-match=hidg 2>/dev/null || true
+fi
+chmod 666 /dev/hidg* 2>/dev/null || true
+success "Configured udev rules and permissions for /dev/hidg*."
+
 # Load kernel modules dynamically if available
 info "Loading kernel modules (dwc2, libcomposite)..."
 modprobe dwc2 2>/dev/null || true

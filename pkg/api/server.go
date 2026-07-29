@@ -14,6 +14,7 @@ type Server struct {
 	gadgetManager *GadgetManager
 	scriptManager *ScriptManager
 	runnerEngine  *RunnerEngine
+	ledWatcher    *hid.LEDWatcher
 	mux           *http.ServeMux
 }
 
@@ -44,7 +45,12 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		gadgetManager: gm,
 		scriptManager: sm,
 		runnerEngine:  runner,
+		ledWatcher:    opts.LEDWatcher,
 		mux:           http.NewServeMux(),
+	}
+
+	if opts.LEDWatcher != nil {
+		s.listenLEDState()
 	}
 
 	s.routes()
@@ -69,13 +75,39 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/stop", s.handleStopScript)
 
 	// WebSocket Endpoint
-	s.mux.HandleFunc("GET /api/ws", s.hub.HandleWS)
+	s.mux.HandleFunc("GET /api/ws", s.handleWS)
 
 	// Static Web Assets Embedding
 	webFS, err := WebFS()
 	if err == nil {
 		s.mux.Handle("/", http.FileServer(webFS))
 	}
+}
+
+func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.hub.Upgrade(w, r)
+	if err != nil {
+		return
+	}
+
+	if s.ledWatcher != nil {
+		_ = conn.WriteJSON(WSMessage{
+			Type:    "led_state",
+			Payload: s.ledWatcher.GetState(),
+		})
+	}
+}
+
+func (s *Server) listenLEDState() {
+	ledChan, _ := s.ledWatcher.Subscribe()
+	go func() {
+		for state := range ledChan {
+			s.hub.Broadcast(WSMessage{
+				Type:    "led_state",
+				Payload: state,
+			})
+		}
+	}()
 }
 
 // REST Handlers

@@ -83,12 +83,12 @@ func (h *Hub) Broadcast(msg WSMessage) {
 	}
 }
 
-// HandleWS handles WebSocket handshake and upgrades HTTP connection.
-func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
+// Upgrade upgrades an HTTP connection to WebSocket, registers it with the Hub, and starts the read loop.
+func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[WebSocket] Upgrade error: %v", err)
-		return
+		return nil, err
 	}
 
 	h.register <- conn
@@ -106,4 +106,11 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+
+	return conn, nil
+}
+
+// HandleWS handles WebSocket handshake and upgrades HTTP connection.
+func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
+	_, _ = h.Upgrade(w, r)
 }
