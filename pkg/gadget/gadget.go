@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 const (
@@ -431,8 +432,10 @@ func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context) error {
 
 	// Step 1: Unbind UDC
 	udcPath := filepath.Join(gadgetPath, "UDC")
-	if _, err := os.Stat(udcPath); err == nil {
+	if data, err := os.ReadFile(udcPath); err == nil && len(data) > 0 {
 		_ = writeFile(udcPath, []byte(""))
+		// Allow kernel time to fully release the USB device controller
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	// Step 2: Clear configuration symlinks & subdirs
