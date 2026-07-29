@@ -17,7 +17,10 @@ async function loadGadgetStatus() {
 }
 
 function updateGadgetUI(gadgetData) {
-    state.gadget = { ...state.gadget, ...gadgetData };
+    if (gadgetData) {
+        state.gadget = { ...state.gadget, ...gadgetData };
+    }
+    const cfg = state.gadget.config || state.gadget;
 
     // UDC Name Badge
     const udcElem = document.getElementById('udc-name');
@@ -30,11 +33,11 @@ function updateGadgetUI(gadgetData) {
     const eth = document.getElementById('gadget-ethernet');
     const ser = document.getElementById('gadget-serial');
 
-    if (kb) kb.checked = !!state.gadget.keyboard;
-    if (ms) ms.checked = !!state.gadget.mouse;
-    if (st) st.checked = !!state.gadget.storage;
-    if (eth) eth.checked = !!state.gadget.ethernet;
-    if (ser) ser.checked = !!state.gadget.serial;
+    if (kb) kb.checked = !!cfg.keyboard;
+    if (ms) ms.checked = !!cfg.mouse;
+    if (st) st.checked = !!cfg.storage;
+    if (eth) eth.checked = !!cfg.ethernet;
+    if (ser) ser.checked = !!cfg.serial;
 
     // Form inputs
     const vid = document.getElementById('vendor-id');
@@ -45,13 +48,13 @@ function updateGadgetUI(gadgetData) {
     const layout = document.getElementById('keyboard-layout');
     const storageSize = document.getElementById('storage-size');
 
-    if (vid && state.gadget.vendorId) vid.value = state.gadget.vendorId;
-    if (pid && state.gadget.productId) pid.value = state.gadget.productId;
-    if (mfg && state.gadget.manufacturer) mfg.value = state.gadget.manufacturer;
-    if (prod && state.gadget.product) prod.value = state.gadget.product;
-    if (sn && state.gadget.serialNumber) sn.value = state.gadget.serialNumber;
-    if (layout && state.gadget.keyboardLayout) layout.value = state.gadget.keyboardLayout;
-    if (storageSize && state.gadget.storageSizeMb) storageSize.value = state.gadget.storageSizeMb;
+    if (vid && cfg.vendorId) vid.value = cfg.vendorId;
+    if (pid && cfg.productId) pid.value = cfg.productId;
+    if (mfg && cfg.manufacturer) mfg.value = cfg.manufacturer;
+    if (prod && cfg.product) prod.value = cfg.product;
+    if (sn && cfg.serialNumber) sn.value = cfg.serialNumber;
+    if (layout && cfg.keyboardLayout) layout.value = cfg.keyboardLayout;
+    if (storageSize && cfg.storageSizeMb) storageSize.value = cfg.storageSizeMb;
 }
 
 async function applyGadgetConfig(event) {

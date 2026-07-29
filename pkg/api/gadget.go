@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -22,38 +24,60 @@ type GadgetManager struct {
 	hub           *Hub
 	gm            *gadget.GadgetManager
 	keyboard      *hid.Keyboard
+	storageDir    string
 }
 
 // NewGadgetManager initializes a new GadgetManager instance.
-func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard) *GadgetManager {
+func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string) *GadgetManager {
+	initialCfg := GadgetConfig{
+		Keyboard:       true,
+		Mouse:          true,
+		Storage:        false,
+		Ethernet:       false,
+		Serial:         false,
+		VendorID:       "0x1d6b",
+		ProductID:      "0x0104",
+		Manufacturer:   "Raspiducky Labs",
+		Product:        "Raspiducky Multi-Function HID",
+		SerialNumber:   "RPD-2026-0001",
+		StorageSizeMB:  100,
+		KeyboardLayout: "US",
+	}
+
+	if storageDir != "" {
+		cfgPath := filepath.Join(storageDir, "gadget_config.json")
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			var savedCfg GadgetConfig
+			if err := json.Unmarshal(data, &savedCfg); err == nil {
+				initialCfg = savedCfg
+			}
+		}
+	}
+
+	var opts []gadget.Option
+	if storageDir != "" && storageDir != "/var/lib/raspiducky" {
+		udcDir := filepath.Join(storageDir, "udc")
+		_ = os.MkdirAll(udcDir, 0755)
+		_ = os.WriteFile(filepath.Join(udcDir, "dummy.udc"), []byte(""), 0644)
+		opts = append(opts, gadget.WithBaseDir(filepath.Join(storageDir, "usb_gadget")), gadget.WithUDCDir(udcDir))
+	}
+
 	manager := &GadgetManager{
-		hub:      hub,
-		gm:       gadget.NewGadgetManager(),
-		keyboard: keyboard,
+		hub:        hub,
+		gm:         gadget.NewGadgetManager(opts...),
+		keyboard:   keyboard,
+		storageDir: storageDir,
 		currentStatus: GadgetStatus{
 			Deployed:        false,
 			ActiveFunctions: []string{},
 			UDC:             "",
-			Config: GadgetConfig{
-				Keyboard:     true,
-				Mouse:        true,
-				Storage:      false,
-				Ethernet:     false,
-				Serial:       false,
-				VendorID:     "0x1d6b",
-				ProductID:    "0x0104",
-				Manufacturer: "Raspiducky Labs",
-				Product:        "Raspiducky Multi-Function HID",
-				SerialNumber:   "RPD-2026-0001",
-				StorageSizeMB:  100,
-				KeyboardLayout: "US",
-			},
+			Config:          initialCfg,
 		},
 	}
 	
-	// Deploy default config at startup
+	// Deploy config at startup
 	if _, err := manager.UpdateConfig(manager.currentStatus.Config); err != nil {
-		log.Printf("[Gadget] Could not deploy default gadget config: %v", err)
+		log.Printf("[Gadget] Could not deploy initial gadget config: %v", err)
 	}
 	
 	return manager
@@ -118,12 +142,16 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		if size <= 0 {
 			size = 100 // Default to 100MB if invalid or 0
 		}
-		if err := ensureBackingFile("/var/lib/raspiducky/disk.img", size); err != nil {
+		diskPath := "/var/lib/raspiducky/disk.img"
+		if gm.storageDir != "" {
+			diskPath = filepath.Join(gm.storageDir, "disk.img")
+		}
+		if err := ensureBackingFile(diskPath, size); err != nil {
 			return GadgetStatus{}, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
 		}
 		gadgetCfg.MassStorage = gadget.MassStorageConfig{
 			Enabled: true,
-			BackingFile: "/var/lib/raspiducky/disk.img",
+			BackingFile: diskPath,
 		}
 	}
 	if cfg.Ethernet {
@@ -149,6 +177,12 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	gm.currentStatus.Config = cfg
 	gm.currentStatus.ActiveFunctions = activeFuncs
 	gm.currentStatus.Deployed = true
+
+	if gm.storageDir != "" {
+		if data, err := json.MarshalIndent(cfg, "", "  "); err == nil {
+			_ = os.WriteFile(filepath.Join(gm.storageDir, "gadget_config.json"), data, 0644)
+		}
+	}
 	
 	if udc, err := gm.gm.GetUDCName(); err == nil {
 		gm.currentStatus.UDC = udc

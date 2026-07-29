@@ -30,7 +30,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	hub := NewHub()
 	go hub.Run()
 
-	gm := NewGadgetManager(hub, opts.Keyboard)
+	gm := NewGadgetManager(hub, opts.Keyboard, opts.StorageDir)
 
 	sm, err := NewScriptManager(opts.StorageDir)
 	if err != nil {
