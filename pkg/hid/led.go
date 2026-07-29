@@ -86,6 +86,7 @@ func (w *LEDWatcher) Subscribe() (<-chan LEDState, func()) {
 // LEDWatcher monitors `/dev/hidg0` for host LED state updates.
 type LEDWatcher struct {
 	mu         sync.Mutex
+	devicePath string
 	reader     io.Reader
 	ownsReader bool
 	running    bool
@@ -99,22 +100,14 @@ type LEDWatcher struct {
 func NewLEDWatcher(ctx context.Context, devicePath string) (*LEDWatcher, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &LEDWatcher{
-		listeners: make(map[chan uint8]uint8),
-		ctx:       ctx,
-		cancel:    cancel,
+		devicePath: devicePath,
+		listeners:  make(map[chan uint8]uint8),
+		ctx:        ctx,
+		cancel:     cancel,
+		running:    true,
 	}
 
-	if devicePath != "" {
-		f, err := os.Open(devicePath)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("opening LED watcher device %q: %w", devicePath, err)
-		}
-		w.reader = f
-		w.ownsReader = true
-		w.running = true
-		go w.readLoop()
-	}
+	go w.readLoop()
 
 	return w, nil
 }
@@ -129,13 +122,7 @@ func (w *LEDWatcher) SetReader(r io.Reader) {
 	}
 	w.reader = r
 	w.ownsReader = false
-	shouldStart := !w.running
-	w.running = true
 	w.mu.Unlock()
-
-	if shouldStart {
-		go w.readLoop()
-	}
 }
 
 func (w *LEDWatcher) readLoop() {
@@ -154,22 +141,63 @@ func (w *LEDWatcher) readLoop() {
 		}
 
 		w.mu.Lock()
-		r := w.reader
+		customReader := w.reader
+		ownsReader := w.ownsReader
+		devPath := w.devicePath
 		w.mu.Unlock()
 
-		if r == nil {
-			time.Sleep(100 * time.Millisecond)
-			continue
+		var r io.Reader
+		var fileToClose io.Closer
+
+		if customReader != nil {
+			r = customReader
+		} else if devPath != "" {
+			f, err := os.Open(devPath)
+			if err != nil {
+				select {
+				case <-w.ctx.Done():
+					return
+				case <-time.After(500 * time.Millisecond):
+					continue
+				}
+			}
+			r = f
+			fileToClose = f
+		} else {
+			select {
+			case <-w.ctx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+				continue
+			}
 		}
 
-		n, err := r.Read(buf)
-		if err != nil {
-			return
-		}
+		for {
+			select {
+			case <-w.ctx.Done():
+				if fileToClose != nil {
+					_ = fileToClose.Close()
+				}
+				return
+			default:
+			}
 
-		if n > 0 {
-			newState := buf[0]
-			w.UpdateState(newState)
+			n, err := r.Read(buf)
+			if err != nil {
+				if fileToClose != nil {
+					_ = fileToClose.Close()
+				}
+				if customReader != nil && !ownsReader {
+					return
+				}
+				time.Sleep(200 * time.Millisecond)
+				break
+			}
+
+			if n > 0 {
+				newState := buf[0]
+				w.UpdateState(newState)
+			}
 		}
 	}
 }
