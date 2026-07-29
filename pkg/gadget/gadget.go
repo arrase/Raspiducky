@@ -224,8 +224,19 @@ func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("failed finding UDC controller: %w", err)
 	}
-	if err := writeFile(filepath.Join(gadgetPath, "UDC"), []byte(udcName)); err != nil {
-		return fmt.Errorf("failed binding to UDC %s: %w", udcName, err)
+	udcPath := filepath.Join(gadgetPath, "UDC")
+	
+	// Retry loop for UDC binding to avoid 'device or resource busy'
+	var bindErr error
+	for i := 0; i < 10; i++ {
+		bindErr = writeFile(udcPath, []byte(udcName))
+		if bindErr == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if bindErr != nil {
+		return fmt.Errorf("failed binding to UDC %s: %w", udcName, bindErr)
 	}
 
 	gm.currentCfg = cfg
