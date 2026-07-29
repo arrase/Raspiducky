@@ -22,9 +22,65 @@ const (
 
 // LEDState holds the status of host-driven keyboard LEDs.
 type LEDState struct {
-	NumLock    bool
-	CapsLock   bool
-	ScrollLock bool
+	NumLock    bool `json:"numLock"`
+	CapsLock   bool `json:"capsLock"`
+	ScrollLock bool `json:"scrollLock"`
+}
+
+// GetState returns current LED lock status.
+func (w *LEDWatcher) GetState() LEDState {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return LEDState{
+		NumLock:    (w.current & LEDNumLock) != 0,
+		CapsLock:   (w.current & LEDCapsLock) != 0,
+		ScrollLock: (w.current & LEDScrollLock) != 0,
+	}
+}
+
+// Subscribe returns a channel that receives LED state updates continuously,
+// along with an unsubscribe function.
+func (w *LEDWatcher) Subscribe() (<-chan LEDState, func()) {
+	ch := make(chan uint8, 16)
+
+	w.mu.Lock()
+	w.listeners[ch] = 0
+	w.mu.Unlock()
+
+	out := make(chan LEDState, 16)
+	ctx, cancel := context.WithCancel(w.ctx)
+
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case val, ok := <-ch:
+				if !ok {
+					return
+				}
+				state := LEDState{
+					NumLock:    (val & LEDNumLock) != 0,
+					CapsLock:   (val & LEDCapsLock) != 0,
+					ScrollLock: (val & LEDScrollLock) != 0,
+				}
+				select {
+				case out <- state:
+				default:
+				}
+			}
+		}
+	}()
+
+	unsubscribe := func() {
+		cancel()
+		w.mu.Lock()
+		delete(w.listeners, ch)
+		w.mu.Unlock()
+	}
+
+	return out, unsubscribe
 }
 
 // LEDWatcher monitors `/dev/hidg0` for host LED state updates.
