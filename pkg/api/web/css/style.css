@@ -363,7 +363,7 @@ label {
     color: var(--text-muted);
 }
 
-input[type="text"], select, textarea {
+input[type="text"], input[type="number"], select, textarea {
     background: rgba(10, 14, 22, 0.8);
     border: 1px solid var(--card-border);
     border-radius: var(--radius-sm);
@@ -375,7 +375,7 @@ input[type="text"], select, textarea {
     transition: all 0.2s ease;
 }
 
-input[type="text"]:focus, select:focus, textarea:focus {
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
     border-color: var(--accent-cyan);
     box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
 }
@@ -676,6 +676,10 @@ input[type="text"]:focus, select:focus, textarea:focus {
 .script-card-title {
     font-weight: 600;
     font-size: 1.05rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 8px;
 }
 
 .script-badge {
@@ -685,6 +689,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
     font-weight: 700;
     font-family: var(--font-code);
     text-transform: uppercase;
+    flex-shrink: 0;
 }
 
 .badge-ducky { background: rgba(255, 183, 3, 0.2); color: var(--accent-amber); border: 1px solid rgba(255, 183, 3, 0.4); }
