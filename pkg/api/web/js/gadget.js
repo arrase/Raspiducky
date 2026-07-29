@@ -55,7 +55,53 @@ function updateGadgetUI(gadgetData) {
     if (sn && cfg.serialNumber) sn.value = cfg.serialNumber;
     if (layout && cfg.keyboardLayout) layout.value = cfg.keyboardLayout;
     if (storageSize && cfg.storageSizeMb) storageSize.value = cfg.storageSizeMb;
+
+    updateEndpointMonitor();
 }
+
+function updateEndpointMonitor() {
+    let endpoints = 0;
+    const kb = document.getElementById('gadget-keyboard');
+    const ms = document.getElementById('gadget-mouse');
+    const st = document.getElementById('gadget-storage');
+    const eth = document.getElementById('gadget-ethernet');
+    const ser = document.getElementById('gadget-serial');
+
+    if (kb && kb.checked) endpoints += 1;
+    if (ms && ms.checked) endpoints += 1;
+    if (st && st.checked) endpoints += 1;
+    if (eth && eth.checked) endpoints += 4; // RNDIS (2) + ECM (2)
+    if (ser && ser.checked) endpoints += 2; // ACM (2)
+
+    const maxEndpoints = 7;
+    const countElem = document.getElementById('endpoint-count');
+    const progressElem = document.getElementById('endpoint-progress');
+    const warningElem = document.getElementById('endpoint-warning');
+    const applyBtn = document.getElementById('btn-apply-gadget');
+
+    if (countElem) countElem.textContent = `${endpoints} / ${maxEndpoints}`;
+    if (progressElem) {
+        const pct = Math.min((endpoints / maxEndpoints) * 100, 100);
+        progressElem.style.width = `${pct}%`;
+        progressElem.style.background = endpoints > maxEndpoints ? 'var(--danger)' : 'var(--primary)';
+    }
+
+    if (endpoints > maxEndpoints) {
+        if (warningElem) warningElem.style.display = 'block';
+        if (applyBtn) applyBtn.disabled = true;
+    } else {
+        if (warningElem) warningElem.style.display = 'none';
+        if (applyBtn) applyBtn.disabled = false;
+    }
+}
+
+// Add event listeners when DOM loads
+document.addEventListener('DOMContentLoaded', () => {
+    ['gadget-keyboard', 'gadget-mouse', 'gadget-storage', 'gadget-ethernet', 'gadget-serial'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', updateEndpointMonitor);
+    });
+});
 
 async function applyGadgetConfig(event) {
     if (event) event.preventDefault();
