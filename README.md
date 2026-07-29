@@ -40,14 +40,32 @@ A sleek, dark-mode single-page dashboard with real-time WebSocket log streaming,
 
 ## 🚀 Getting Started
 
-### ⚡ Quick Installation & Auto-Update (Recommended)
+### ⚡ 1. Automated Installation (Recommended)
 
-Run this single command on your Raspberry Pi (or Linux target) to automatically detect the architecture, download the latest release binary, configure USB Gadget kernel overlays, and set up the systemd service:
+Run this single command on your Raspberry Pi (or compatible Linux target):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh | sudo sh
 ```
-*Running this command again in the future will automatically update Raspiducky to the latest GitHub release.*
+
+**¿What does this script do?**
+* Automatically detects your architecture and downloads the latest release binary.
+* Configures the required USB Gadget kernel overlays.
+* Installs and starts Raspiducky as a **background system service**.
+
+*Note: Running this command again in the future will automatically update Raspiducky to the latest GitHub release.*
+
+### 🌐 2. Using the Application
+
+Once installed via the script above, **Raspiducky is already running in the background!** You do not need to start it manually from the terminal.
+
+Simply open your web browser on any device in the same network and navigate to:
+
+```
+http://<raspberry-pi-ip>:8000
+```
+
+From this live dashboard, you can configure your USB gadget settings, manage payloads, and execute scripts interactively.
 
 ---
 
@@ -59,9 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh
 > * ✅ **Supported RPi Ports**: Raspberry Pi Zero / Zero W / Zero 2 W (Micro-USB USB port), Raspberry Pi 3A+ / A+ (Type-A OTG port), Raspberry Pi 4B / 5 (USB-C power/data port).
 > * ❌ **Unsupported RPi Ports**: Standard Type-A ports on Raspberry Pi 1B, 2B, 3B, and 3B+ pass through an onboard LAN9512/LAN9514/LAN7515 USB hub chip which prevents USB Device/Gadget mode.
 
-<details>
-<summary><b>🚦 Hardware Endpoint Limits (Click to expand)</b></summary>
-<br>
+### 🚦 Hardware Endpoint Limits
 
 Depending on your SBC's USB controller, there is a physical hardware limit on the maximum number of **USB IN Endpoints** that can be active simultaneously:
 
@@ -77,11 +93,8 @@ Depending on your SBC's USB controller, there is a physical hardware limit on th
 * 🌐 **USB Ethernet (RNDIS/ECM)**: 4 Endpoints (2 for RNDIS, 2 for ECM)
 
 *The Raspiducky Web Dashboard automatically reads your specific board's limits directly from the kernel DebugFS and prevents you from deploying a combination of functions that exceeds your hardware's capabilities.*
-</details>
 
-<details>
-<summary><b>📋 Supported Boards & Binary Asset Matrix (Click to expand)</b></summary>
-<br>
+### 📋 Supported Boards & Binary Asset Matrix
 
 | Asset Name | Architecture | Target SBC Boards | USB OTG Port |
 |---|---|---|---|
@@ -89,28 +102,6 @@ Depending on your SBC's USB controller, there is a physical hardware limit on th
 | **`raspiducky-linux-armv7`** | ARMv7 (32-bit) | • **RPi 3A+** *(32-bit OS)*<br>• **RPi CM 3**<br>• **Banana Pi M2 Zero/M1**<br>• **Orange Pi Zero/One/PC**<br>• **NanoPi NEO** | Micro-USB |
 | **`raspiducky-linux-arm64`** | ARM64 (64-bit) | • **RPi Zero 2 W** *(64-bit OS)*<br>• **RPi 4B / 5** *(USB-C)*<br>• **RPi 3A+** *(64-bit OS)*<br>• **RPi CM4 / CM5**<br>• **Orange Pi Zero 2/3/5**<br>• **NanoPi R2S/R4S/NEO3**<br>• **Radxa Rock Pi**<br>• **Pine64 Quartz64** | USB-C / Micro-USB |
 | **`raspiducky-linux-amd64`** | x86_64 (64-bit) | • **Standard PC / Intel NUC** *(Linux with USB OTG/UDC hardware or vUSB testing)* | USB-C OTG |
-</details>
-
----
-
-## 🎮 Usage
-
-### 1. Starting the Daemon & Web Dashboard
-Run `raspiducky` in daemon mode with root privileges (required to interact with `/sys/kernel/config/usb_gadget` and `/dev/hidg*`):
-
-```bash
-sudo ./raspiducky daemon -port :8000 -layout US
-```
-> *Note: The `-layout` flag sets the default keyboard layout (e.g., `US`, `ES`, `DE`, `FR`).*
-
-Open your browser and navigate to `http://<raspberry-pi-ip>:8000` to access the live dashboard.
-
-### 2. Executing Scripts via CLI
-You can execute a DuckyScript (`.txt`) or JavaScript (`.js`) file directly from the command line:
-
-```bash
-sudo ./raspiducky run payloads/hello_world.txt -layout ES
-```
 
 ---
 
@@ -153,20 +144,39 @@ type("NumLock was toggled on host!\n");
 
 ---
 
-## 🛠️ Advanced: Building from Source
+## 🛠️ Advanced Usage & CLI
 
-<details>
-<summary><b>View Build Instructions</b></summary>
-<br>
+While the web dashboard is the easiest and primary way to use Raspiducky, advanced or technical users can interact with the tool directly via the command line.
 
-#### Native Build (On Target Device)
+### Starting the Daemon Manually
+If you decided to build from source or did not use the automated install script, you must run `raspiducky` in daemon mode with root privileges (required to interact with `/sys/kernel/config/usb_gadget` and `/dev/hidg*`):
+
+```bash
+sudo ./raspiducky daemon -port :8000 -layout US
+```
+> *Note: The `-layout` flag sets the default keyboard layout (e.g., `US`, `ES`, `DE`, `FR`).*
+
+### Executing Scripts via CLI (Automation)
+You can execute a DuckyScript (`.txt`) or JavaScript (`.js`) file directly from the command line without using the web interface. 
+
+**This is especially useful for automation.** For example, you can schedule a script to run automatically when the system boots by adding it to the root user's `crontab`.
+
+```bash
+sudo ./raspiducky run payloads/hello_world.txt -layout ES
+```
+
+---
+
+## 🏗️ Building from Source
+
+### Native Build (On Target Device)
 ```bash
 git clone https://github.com/arrase/Raspiducky.git
 cd Raspiducky
 go build -o build/raspiducky ./cmd/raspiducky
 ```
 
-#### Cross-Compiling for Specific Targets
+### Cross-Compiling for Specific Targets
 
 * **Raspberry Pi Zero / Zero W (ARMv6)**:
   ```bash
@@ -180,15 +190,10 @@ go build -o build/raspiducky ./cmd/raspiducky
   ```bash
   GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/raspiducky-linux-arm64 ./cmd/raspiducky
   ```
-</details>
 
 ---
 
-## 🏗️ Architecture
-
-<details>
-<summary><b>View Architecture Diagram</b></summary>
-<br>
+## 📐 Architecture
 
 ```text
                                   +---------------------------------------+
@@ -216,7 +221,6 @@ go build -o build/raspiducky ./cmd/raspiducky
                       | Linux Kernel ConfigFS & /dev/hidgX        |
                       +-------------------------------------------+
 ```
-</details>
 
 ---
 
