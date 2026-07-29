@@ -100,7 +100,11 @@ func (c Config) Validate() error {
 		return errors.New("at least one USB function must be enabled")
 	}
 
-	// Validate hardware endpoint limits (DWC2 controller supports max 7 IN endpoints)
+	return nil
+}
+
+// CountINEndpoints calculates the total number of IN endpoints required by this configuration
+func (c Config) CountINEndpoints() int {
 	inEndpoints := 0
 	if c.Keyboard {
 		inEndpoints += 1
@@ -120,10 +124,5 @@ func (c Config) Validate() error {
 	if c.ACM.Enabled {
 		inEndpoints += 2 // Interrupt IN, Bulk IN
 	}
-	
-	if inEndpoints > 7 {
-		return fmt.Errorf("configuration requires %d IN endpoints, but the hardware (dwc2) only supports 7. Please disable some functions (e.g., Ethernet uses 4, Serial uses 2)", inEndpoints)
-	}
-
-	return nil
+	return inEndpoints
 }

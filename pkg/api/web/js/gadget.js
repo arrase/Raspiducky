@@ -73,11 +73,25 @@ function updateEndpointMonitor() {
     if (eth && eth.checked) endpoints += 4; // RNDIS (2) + ECM (2)
     if (ser && ser.checked) endpoints += 2; // ACM (2)
 
-    const maxEndpoints = 7;
+    const maxEndpoints = state.gadget.maxEndpoints || 0;
     const countElem = document.getElementById('endpoint-count');
     const progressElem = document.getElementById('endpoint-progress');
     const warningElem = document.getElementById('endpoint-warning');
     const applyBtn = document.getElementById('btn-apply-gadget');
+
+    if (maxEndpoints === 0) {
+        if (countElem) countElem.textContent = `${endpoints} / ?`;
+        if (progressElem) {
+            progressElem.style.width = '100%';
+            progressElem.style.background = 'var(--danger)';
+        }
+        if (warningElem) {
+            warningElem.textContent = 'Hardware limit unknown or debugfs not mounted. Deployment blocked for safety.';
+            warningElem.style.display = 'block';
+        }
+        if (applyBtn) applyBtn.disabled = true;
+        return;
+    }
 
     if (countElem) countElem.textContent = `${endpoints} / ${maxEndpoints}`;
     if (progressElem) {
@@ -87,7 +101,10 @@ function updateEndpointMonitor() {
     }
 
     if (endpoints > maxEndpoints) {
-        if (warningElem) warningElem.style.display = 'block';
+        if (warningElem) {
+            warningElem.textContent = `Hardware limit exceeded. The USB controller supports a maximum of ${maxEndpoints} IN endpoints.`;
+            warningElem.style.display = 'block';
+        }
         if (applyBtn) applyBtn.disabled = true;
     } else {
         if (warningElem) warningElem.style.display = 'none';
