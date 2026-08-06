@@ -1,0 +1,81 @@
+site_name: Raspiducky
+site_description: Modern, high-performance USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi and Linux SBCs.
+site_author: Arrase
+site_url: https://arrase.github.io/Raspiducky/
+
+repo_name: arrase/Raspiducky
+repo_url: https://github.com/arrase/Raspiducky
+
+nav:
+  - Overview: index.md
+  - Architecture & Core Engine: architecture.md
+  - USB Gadget Functions & Limits: usb-gadgets.md
+  - DuckyScript & JavaScript Engines: scripting.md
+  - Web Dashboard & REST API: web-dashboard-api.md
+  - Hardware & SBC Matrix: hardware-compatibility.md
+  - CLI & Headless Automation: cli-automation.md
+  - Installation & Building: installation.md
+
+theme:
+  name: material
+  language: en
+  icon:
+    logo: material/usb
+  palette:
+    # Palette toggle for light/dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - content.code.copy
+
+plugins: []
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
+
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/arrase/Raspiducky

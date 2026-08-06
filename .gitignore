@@ -30,3 +30,4 @@ vendor/
 # Local data & storage dir
 data/
 tmp/
+site/

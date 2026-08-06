@@ -1,0 +1,207 @@
+/* Glassmorphism & Custom Styling for Geotify */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --primary-color: #6c5ce7;
+  --secondary-color: #a29bfe;
+  --accent-color: #00cec9;
+  --accent-glow: rgba(0, 206, 201, 0.35);
+  --card-bg: rgba(45, 52, 54, 0.75);
+  --card-hover-bg: #2d3436;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-hover-border: #00cec9;
+  --text-main: #d2dae2;
+  --text-muted: #b2bec3;
+}
+
+[data-md-color-scheme="slate"] {
+  --primary-color: #6c5ce7;
+  --secondary-color: #a29bfe;
+  --accent-color: #00cec9;
+  --accent-glow: rgba(0, 206, 201, 0.4);
+  --card-bg: rgba(34, 39, 46, 0.85);
+  --card-hover-bg: #2d333b;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-hover-border: #00cec9;
+  --text-main: #adbac7;
+  --text-muted: #b2bec3;
+}
+
+[data-md-color-scheme="default"] {
+  --primary-color: #6c5ce7;
+  --secondary-color: #574b90;
+  --accent-color: #00b894;
+  --accent-glow: rgba(0, 184, 148, 0.3);
+  --card-bg: rgba(255, 255, 255, 0.95);
+  --card-hover-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --card-hover-border: #00b894;
+  --text-main: #2d3436;
+  --text-muted: #636e72;
+}
+
+/* Page Typography */
+body, .md-typeset {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+}
+
+/* Hide Search Element */
+.md-search {
+  display: none !important;
+}
+
+/* Full Width Compact Landing Page Layout */
+.md-grid {
+  max-width: 84rem !important; /* ~1344px */
+}
+
+.md-content {
+  max-width: 100% !important;
+}
+
+.md-main {
+  background: radial-gradient(circle at 50% 0%, rgba(108, 92, 231, 0.12) 0%, transparent 60%);
+}
+
+.md-content__inner {
+  padding-top: 1rem !important;
+}
+
+/* Hero Section - Compact */
+.md-typeset h1#raspiducky,
+.md-typeset h1#why-raspiducky,
+.md-typeset h1#geotify,
+.md-typeset h1#life-is-the-ultimate-side-project {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #ffffff 0%, #a29bfe 50%, #00cec9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-top: 0.5rem;
+  margin-bottom: 0.4rem;
+  text-align: center;
+}
+
+[data-md-color-scheme="default"] .md-typeset h1#raspiducky,
+[data-md-color-scheme="default"] .md-typeset h1#why-raspiducky,
+[data-md-color-scheme="default"] .md-typeset h1#geotify,
+[data-md-color-scheme="default"] .md-typeset h1#life-is-the-ultimate-side-project {
+  background: linear-gradient(135deg, #2d3436 0%, #6c5ce7 50%, #00b894 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.md-typeset h1#raspiducky + p,
+.md-typeset h1#why-raspiducky + p,
+.md-typeset h1#geotify + p,
+.md-typeset h1#life-is-the-ultimate-side-project + p {
+  text-align: center;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  max-width: 600px;
+  margin: 0 auto 1.75rem auto;
+}
+
+/* Projects Grid Layout */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+/* Feature Card Styling - Compact & Dense */
+.feature-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+  border-top: 3px solid transparent;
+  border-radius: 10px;
+  padding: 1.35rem 1.4rem;
+  text-decoration: none !important;
+  color: inherit !important;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  word-break: break-word;
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  background: var(--card-hover-bg);
+  border-color: var(--card-hover-border);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22), 0 0 20px var(--accent-glow);
+}
+
+.feature-card:hover::before {
+  opacity: 1;
+}
+
+/* Feature Icon */
+.feature-icon {
+  font-size: 1.85rem;
+  color: var(--accent-color) !important;
+  margin-bottom: 0.75rem;
+  display: inline-block;
+}
+
+/* Card Heading */
+.feature-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--secondary-color) !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+  transition: color 0.3s ease;
+  word-break: normal;
+  hyphens: none;
+}
+
+.feature-card:hover h3 {
+  color: var(--accent-color) !important;
+}
+
+/* Card Description */
+.feature-card p {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0 !important;
+}
+
+/* Responsive Grid */
+@media (max-width: 1080px) {
+  .projects-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .projects-grid {
+    grid-template-columns: 1fr;
+  }
+  .md-typeset h1#geotify,
+  .md-typeset h1#life-is-the-ultimate-side-project {
+    font-size: 1.9rem;
+  }
+}
