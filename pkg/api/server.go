@@ -96,6 +96,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			Payload: s.ledWatcher.GetState(),
 		})
 	}
+
+	s.hub.Register(conn)
 }
 
 func (s *Server) listenLEDState() {

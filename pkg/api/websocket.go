@@ -83,14 +83,18 @@ func (h *Hub) Broadcast(msg WSMessage) {
 	}
 }
 
-// Upgrade upgrades an HTTP connection to WebSocket, registers it with the Hub, and starts the read loop.
+// Upgrade upgrades an HTTP connection to WebSocket.
 func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[WebSocket] Upgrade error: %v", err)
 		return nil, err
 	}
+	return conn, nil
+}
 
+// Register registers an upgraded WebSocket connection with the Hub and starts its read loop.
+func (h *Hub) Register(conn *websocket.Conn) {
 	h.register <- conn
 
 	// Keep-alive / read loop
@@ -106,11 +110,13 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, 
 			}
 		}
 	}()
-
-	return conn, nil
 }
 
-// HandleWS handles WebSocket handshake and upgrades HTTP connection.
+// HandleWS handles WebSocket handshake, upgrades HTTP connection, and registers it.
 func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
-	_, _ = h.Upgrade(w, r)
+	conn, err := h.Upgrade(w, r)
+	if err != nil {
+		return
+	}
+	h.Register(conn)
 }
