@@ -397,7 +397,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 
 .btn-primary {
     background: linear-gradient(135deg, #00f0ff 0%, #7000ff 100%);
-    color: #fff;
+    color: #05131f;
     box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3);
 }
 
@@ -418,7 +418,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 }
 
 .btn-danger {
-    background: linear-gradient(135deg, #ff3366 0%, #b3002d 100%);
+    background: linear-gradient(135deg, #d90429 0%, #9b0020 100%);
     color: #fff;
 }
 
@@ -613,7 +613,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 .tag-info { background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); }
 .tag-warn { background: rgba(255, 183, 3, 0.15); color: var(--accent-amber); }
 .tag-error { background: rgba(255, 51, 102, 0.15); color: var(--accent-red); }
-.tag-hid { background: rgba(138, 43, 226, 0.15); color: #c084fc; }
+.tag-hid { background: rgba(138, 43, 226, 0.15); color: var(--accent-purple); }
 
 .log-msg {
     color: #cbd5e1;

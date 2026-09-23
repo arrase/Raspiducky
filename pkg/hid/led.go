@@ -48,13 +48,15 @@ func (w *LEDWatcher) Subscribe() (<-chan LEDState, func()) {
 	w.mu.Unlock()
 
 	out := make(chan LEDState, 16)
-	ctx, cancel := context.WithCancel(w.ctx)
+	stopCh := make(chan struct{})
 
 	go func() {
 		defer close(out)
 		for {
 			select {
-			case <-ctx.Done():
+			case <-stopCh:
+				return
+			case <-w.stopCh:
 				return
 			case val, ok := <-ch:
 				if !ok {
@@ -73,11 +75,14 @@ func (w *LEDWatcher) Subscribe() (<-chan LEDState, func()) {
 		}
 	}()
 
+	var unsubOnce sync.Once
 	unsubscribe := func() {
-		cancel()
-		w.mu.Lock()
-		delete(w.listeners, ch)
-		w.mu.Unlock()
+		unsubOnce.Do(func() {
+			close(stopCh)
+			w.mu.Lock()
+			delete(w.listeners, ch)
+			w.mu.Unlock()
+		})
 	}
 
 	return out, unsubscribe
@@ -92,20 +97,26 @@ type LEDWatcher struct {
 	running    bool
 	current    uint8
 	listeners  map[chan uint8]uint8 // channel -> mask
-	ctx        context.Context
-	cancel     context.CancelFunc
+	stopCh     chan struct{}
+	stopOnce   sync.Once
 }
 
 // NewLEDWatcher initializes an LEDWatcher reading from devicePath.
 func NewLEDWatcher(ctx context.Context, devicePath string) (*LEDWatcher, error) {
-	ctx, cancel := context.WithCancel(ctx)
 	w := &LEDWatcher{
 		devicePath: devicePath,
 		listeners:  make(map[chan uint8]uint8),
-		ctx:        ctx,
-		cancel:     cancel,
+		stopCh:     make(chan struct{}),
 		running:    true,
 	}
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = w.Close()
+		case <-w.stopCh:
+		}
+	}()
 
 	go w.readLoop()
 
@@ -125,6 +136,35 @@ func (w *LEDWatcher) SetReader(r io.Reader) {
 	w.mu.Unlock()
 }
 
+func (w *LEDWatcher) streamReader(r io.Reader, buf []byte, fileToClose io.Closer, isCustomReader, ownsReader bool) bool {
+	defer func() {
+		if fileToClose != nil {
+			_ = fileToClose.Close()
+		}
+	}()
+
+	for {
+		select {
+		case <-w.stopCh:
+			return false
+		default:
+		}
+
+		n, err := r.Read(buf)
+		if err != nil {
+			if isCustomReader && !ownsReader {
+				return false
+			}
+			time.Sleep(200 * time.Millisecond)
+			return true
+		}
+
+		if n > 0 {
+			w.UpdateState(buf[0])
+		}
+	}
+}
+
 func (w *LEDWatcher) readLoop() {
 	defer func() {
 		w.mu.Lock()
@@ -135,7 +175,7 @@ func (w *LEDWatcher) readLoop() {
 	buf := make([]byte, 8)
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-w.stopCh:
 			return
 		default:
 		}
@@ -146,58 +186,34 @@ func (w *LEDWatcher) readLoop() {
 		devPath := w.devicePath
 		w.mu.Unlock()
 
-		var r io.Reader
-		var fileToClose io.Closer
-
 		if customReader != nil {
-			r = customReader
-		} else if devPath != "" {
-			f, err := os.Open(devPath)
-			if err != nil {
-				select {
-				case <-w.ctx.Done():
-					return
-				case <-time.After(500 * time.Millisecond):
-					continue
-				}
+			if !w.streamReader(customReader, buf, nil, true, ownsReader) {
+				return
 			}
-			r = f
-			fileToClose = f
-		} else {
+			continue
+		}
+
+		if devPath == "" {
 			select {
-			case <-w.ctx.Done():
+			case <-w.stopCh:
 				return
 			case <-time.After(200 * time.Millisecond):
 				continue
 			}
 		}
 
-		for {
+		f, err := os.Open(devPath)
+		if err != nil {
 			select {
-			case <-w.ctx.Done():
-				if fileToClose != nil {
-					_ = fileToClose.Close()
-				}
+			case <-w.stopCh:
 				return
-			default:
+			case <-time.After(500 * time.Millisecond):
+				continue
 			}
+		}
 
-			n, err := r.Read(buf)
-			if err != nil {
-				if fileToClose != nil {
-					_ = fileToClose.Close()
-				}
-				if customReader != nil && !ownsReader {
-					return
-				}
-				time.Sleep(200 * time.Millisecond)
-				break
-			}
-
-			if n > 0 {
-				newState := buf[0]
-				w.UpdateState(newState)
-			}
+		if !w.streamReader(f, buf, f, false, false) {
+			return
 		}
 	}
 }
@@ -282,7 +298,9 @@ func (w *LEDWatcher) WaitLED(ctx context.Context, mask uint8, timeout time.Durat
 
 // Close stops the LEDWatcher.
 func (w *LEDWatcher) Close() error {
-	w.cancel()
+	w.stopOnce.Do(func() {
+		close(w.stopCh)
+	})
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var closeErr error

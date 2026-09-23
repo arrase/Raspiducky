@@ -148,7 +148,8 @@ func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptCon
 }
 
 func (re *RunnerEngine) broadcastLog(level, source, message string) {
-	log.Printf("[%s] %s: %s", level, source, message)
+	sanitizedMsg := strings.ReplaceAll(strings.ReplaceAll(message, "\n", " "), "\r", " ")
+	log.Printf("[%s] %s: %s", level, source, sanitizedMsg)
 	if re.hub != nil {
 		re.hub.Broadcast(WSMessage{
 			Type:    "log",

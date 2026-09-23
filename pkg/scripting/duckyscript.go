@@ -16,47 +16,27 @@ func ParseDuckyScript(duckySource string) (string, error) {
 	var lastJSCommand string
 
 	for scanner.Scan() {
-		rawLine := scanner.Text()
-		line := strings.TrimSpace(rawLine)
+		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
 
-		// Comments
-		if line == "REM" || strings.HasPrefix(line, "REM ") {
-			comment := strings.TrimPrefix(line, "REM")
-			comment = strings.TrimSpace(comment)
-			jsLines = append(jsLines, fmt.Sprintf("// %s", comment))
+		if comment, ok := parseComment(line); ok {
+			jsLines = append(jsLines, comment)
 			continue
 		}
 
-		// DEFAULT_DELAY / DEFAULTDELAY
-		if strings.HasPrefix(line, "DEFAULT_DELAY") || strings.HasPrefix(line, "DEFAULTDELAY") {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				if delayVal, err := strconv.Atoi(parts[1]); err == nil {
-					defaultDelay = delayVal
-					jsLines = append(jsLines, fmt.Sprintf("// Default delay set to %d ms", defaultDelay))
-				}
-			}
+		if delay, comment, ok := parseDefaultDelay(line); ok {
+			defaultDelay = delay
+			jsLines = append(jsLines, comment)
 			continue
 		}
 
-		// REPEAT
-		if strings.HasPrefix(line, "REPEAT") {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 && lastJSCommand != "" {
-				if count, err := strconv.Atoi(parts[1]); err == nil && count > 0 {
-					jsLines = append(jsLines, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, lastJSCommand))
-					if defaultDelay > 0 {
-						jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
-					}
-				}
-			}
+		if repeatLines, ok := parseRepeat(line, lastJSCommand, defaultDelay); ok {
+			jsLines = append(jsLines, repeatLines...)
 			continue
 		}
 
-		// Parse line into JS statement
 		jsCmd := translateLineToJS(line)
 		if jsCmd == "" {
 			continue
@@ -77,12 +57,86 @@ func ParseDuckyScript(duckySource string) (string, error) {
 	return strings.Join(jsLines, "\n"), nil
 }
 
+func parseComment(line string) (string, bool) {
+	if line == "REM" || strings.HasPrefix(line, "REM ") {
+		comment := strings.TrimSpace(strings.TrimPrefix(line, "REM"))
+		return fmt.Sprintf("// %s", comment), true
+	}
+	return "", false
+}
+
+func parseDefaultDelay(line string) (int, string, bool) {
+	if strings.HasPrefix(line, "DEFAULT_DELAY") || strings.HasPrefix(line, "DEFAULTDELAY") {
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			if delayVal, err := strconv.Atoi(parts[1]); err == nil {
+				return delayVal, fmt.Sprintf("// Default delay set to %d ms", delayVal), true
+			}
+		}
+	}
+	return 0, "", false
+}
+
+func parseRepeat(line, lastJSCommand string, defaultDelay int) ([]string, bool) {
+	if !strings.HasPrefix(line, "REPEAT") || lastJSCommand == "" {
+		return nil, false
+	}
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return nil, false
+	}
+	count, err := strconv.Atoi(parts[1])
+	if err != nil || count <= 0 {
+		return nil, false
+	}
+	res := []string{fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, lastJSCommand)}
+	if defaultDelay > 0 {
+		res = append(res, fmt.Sprintf("delay(%d);", defaultDelay))
+	}
+	return res, true
+}
+
+func parseCoordinates(arg string) (int, int) {
+	f := strings.Fields(arg)
+	x, y := 0, 0
+	if len(f) >= 1 {
+		x, _ = strconv.Atoi(f[0])
+	}
+	if len(f) >= 2 {
+		y, _ = strconv.Atoi(f[1])
+	}
+	return x, y
+}
+
+func translateMouseCommand(cmd, arg string) (string, bool) {
+	switch cmd {
+	case "MOUSE_MOVE":
+		x, y := parseCoordinates(arg)
+		return fmt.Sprintf("mouseMove(%d, %d);", x, y), true
+	case "MOUSE_MOVE_ABS", "MOUSE_MOVETO":
+		x, y := parseCoordinates(arg)
+		return fmt.Sprintf("mouseMoveTo(%d, %d);", x, y), true
+	case "MOUSE_CLICK":
+		btn := strings.TrimSpace(arg)
+		if btn == "" {
+			btn = "left"
+		}
+		return fmt.Sprintf("mouseClick(%s);", strconv.Quote(btn)), true
+	default:
+		return "", false
+	}
+}
+
 func translateLineToJS(line string) string {
 	parts := strings.SplitN(line, " ", 2)
 	cmd := strings.ToUpper(parts[0])
 	arg := ""
 	if len(parts) > 1 {
 		arg = parts[1]
+	}
+
+	if js, ok := translateMouseCommand(cmd, arg); ok {
+		return js
 	}
 
 	switch cmd {
@@ -100,13 +154,9 @@ func translateLineToJS(line string) string {
 		return fmt.Sprintf("layout(%s);", strconv.Quote(strings.TrimSpace(arg)))
 
 	case "TYPING_SPEED":
-		f := strings.Fields(arg)
-		d, j := 10, 0
-		if len(f) >= 1 {
-			d, _ = strconv.Atoi(f[0])
-		}
-		if len(f) >= 2 {
-			j, _ = strconv.Atoi(f[1])
+		d, j := parseCoordinates(arg)
+		if len(strings.Fields(arg)) == 0 {
+			d = 10
 		}
 		return fmt.Sprintf("typingSpeed(%d, %d);", d, j)
 
@@ -121,35 +171,6 @@ func translateLineToJS(line string) string {
 			timeout, _ = strconv.Atoi(f[1])
 		}
 		return fmt.Sprintf("waitLED(%s, %d);", strconv.Quote(filter), timeout)
-
-	case "MOUSE_MOVE":
-		f := strings.Fields(arg)
-		x, y := 0, 0
-		if len(f) >= 1 {
-			x, _ = strconv.Atoi(f[0])
-		}
-		if len(f) >= 2 {
-			y, _ = strconv.Atoi(f[1])
-		}
-		return fmt.Sprintf("mouseMove(%d, %d);", x, y)
-
-	case "MOUSE_MOVE_ABS", "MOUSE_MOVETO":
-		f := strings.Fields(arg)
-		x, y := 0, 0
-		if len(f) >= 1 {
-			x, _ = strconv.Atoi(f[0])
-		}
-		if len(f) >= 2 {
-			y, _ = strconv.Atoi(f[1])
-		}
-		return fmt.Sprintf("mouseMoveTo(%d, %d);", x, y)
-
-	case "MOUSE_CLICK":
-		btn := strings.TrimSpace(arg)
-		if btn == "" {
-			btn = "left"
-		}
-		return fmt.Sprintf("mouseClick(%s);", strconv.Quote(btn))
 
 	default:
 		// Check for key combinations like "GUI r", "CTRL-ALT DELETE", "ENTER", etc.

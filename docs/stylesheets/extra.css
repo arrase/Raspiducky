@@ -130,7 +130,7 @@ body, .md-typeset {
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .feature-card::before {

@@ -33,6 +33,8 @@ const (
 	RndisOSDescQWSign      = "MSFT100"
 	RndisOSDescCompatID    = "RNDIS"
 	RndisOSDescSubCompatID = "5162001"
+
+	FuncMassStorage = "mass_storage.usb0"
 )
 
 var (
@@ -377,10 +379,10 @@ func (gm *GadgetManager) setupMouse(gadgetPath, cfgDir string) error {
 }
 
 func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStorageConfig) error {
-	funcDir := filepath.Join(gadgetPath, "functions", "mass_storage.usb0")
+	funcDir := filepath.Join(gadgetPath, "functions", FuncMassStorage)
 	lunDir := filepath.Join(funcDir, "lun.0")
 	if err := os.MkdirAll(lunDir, 0755); err != nil {
-		return fmt.Errorf("failed creating mass_storage.usb0 lun.0: %w", err)
+		return fmt.Errorf("failed creating %s lun.0: %w", FuncMassStorage, err)
 	}
 	if err := writeFile(filepath.Join(funcDir, "stall"), []byte("1")); err != nil {
 		return err
@@ -409,7 +411,7 @@ func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStor
 	if err := writeFile(filepath.Join(lunDir, "file"), []byte(ms.BackingFile)); err != nil {
 		return err
 	}
-	return os.Symlink(funcDir, filepath.Join(cfgDir, "mass_storage.usb0"))
+	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncMassStorage))
 }
 
 func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetConfig) error {
@@ -490,7 +492,7 @@ func (gm *GadgetManager) SetMassStorageFile(ctx context.Context, backingFile str
 		return err
 	}
 
-	lunDir := filepath.Join(gm.GadgetPath(), "functions", "mass_storage.usb0", "lun.0")
+	lunDir := filepath.Join(gm.GadgetPath(), "functions", FuncMassStorage, "lun.0")
 	if _, err := os.Stat(lunDir); os.IsNotExist(err) {
 		return errors.New("mass storage function is not configured")
 	}

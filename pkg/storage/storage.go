@@ -16,6 +16,12 @@ var (
 	ErrEmptyBaseDir = errors.New("base directory cannot be empty")
 )
 
+const (
+	extJS    = ".js"
+	extTxt   = ".txt"
+	extDucky = ".ducky"
+)
+
 func isValidFilename(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
@@ -100,19 +106,19 @@ func (s *Storage) SaveScript(name, scriptType, content string) error {
 		return ErrInvalidType
 	}
 
-	ext := ".js"
+	ext := extJS
 	if scriptType == "ducky" {
-		ext = ".txt"
+		ext = extTxt
 	}
 
 	base := name
 	for {
-		if strings.HasSuffix(base, ".js") {
-			base = strings.TrimSuffix(base, ".js")
-		} else if strings.HasSuffix(base, ".txt") {
-			base = strings.TrimSuffix(base, ".txt")
-		} else if strings.HasSuffix(base, ".ducky") {
-			base = strings.TrimSuffix(base, ".ducky")
+		if strings.HasSuffix(base, extJS) {
+			base = strings.TrimSuffix(base, extJS)
+		} else if strings.HasSuffix(base, extTxt) {
+			base = strings.TrimSuffix(base, extTxt)
+		} else if strings.HasSuffix(base, extDucky) {
+			base = strings.TrimSuffix(base, extDucky)
 		} else {
 			break
 		}
@@ -143,7 +149,7 @@ func (s *Storage) LoadScript(name string) (*ScriptItem, error) {
 	}
 
 	scriptType := "js"
-	if strings.HasSuffix(name, ".txt") || strings.HasSuffix(name, ".ducky") {
+	if strings.HasSuffix(name, extTxt) || strings.HasSuffix(name, extDucky) {
 		scriptType = "ducky"
 	}
 
@@ -169,11 +175,11 @@ func (s *Storage) ListScripts() ([]ScriptItem, error) {
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".js") && !strings.HasSuffix(name, ".txt") && !strings.HasSuffix(name, ".ducky") {
+		if !strings.HasSuffix(name, extJS) && !strings.HasSuffix(name, extTxt) && !strings.HasSuffix(name, extDucky) {
 			continue
 		}
 		scriptType := "js"
-		if strings.HasSuffix(name, ".txt") || strings.HasSuffix(name, ".ducky") {
+		if strings.HasSuffix(name, extTxt) || strings.HasSuffix(name, extDucky) {
 			scriptType = "ducky"
 		}
 
