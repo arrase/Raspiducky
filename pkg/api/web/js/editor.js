@@ -70,7 +70,7 @@ async function runScript() {
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
     
-    if (runBtn && runBtn.disabled) return;
+    if (runBtn?.disabled) return;
     if (runBtn) runBtn.disabled = true;
     if (stopBtn) stopBtn.disabled = false;
 
@@ -83,7 +83,7 @@ async function runScript() {
             type: type
         });
 
-        if (response && response.jobId) {
+        if (response?.jobId) {
             updateJobStatusUI({
                 id: response.jobId,
                 name: name,
@@ -126,7 +126,7 @@ function updateJobStatusUI(job) {
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
 
-    const isTerminal = !job || !job.status || ['IDLE', 'COMPLETED', 'STOPPED', 'FAILED'].includes(job.status.toUpperCase());
+    const isTerminal = !job?.status || ['IDLE', 'COMPLETED', 'STOPPED', 'FAILED'].includes(job.status.toUpperCase());
 
     if (isTerminal) {
         clearJobTimer();
@@ -170,7 +170,7 @@ function appendLog(level, source, message) {
     
     const entry = document.createElement('div');
     entry.className = `log-entry log-${level.toLowerCase()}`;
-    entry.setAttribute('data-level', level.toUpperCase());
+    entry.dataset.level = level.toUpperCase();
     entry.innerHTML = `
         <span class="log-time">[${timeStr}]</span>
         <span class="log-tag ${tagClass}">${source}</span>
@@ -179,7 +179,7 @@ function appendLog(level, source, message) {
 
     terminal.appendChild(entry);
     while (terminal.childElementCount > 500) {
-        terminal.removeChild(terminal.firstChild);
+        terminal.firstElementChild?.remove();
     }
     terminal.scrollTop = terminal.scrollHeight;
 }
@@ -202,7 +202,7 @@ function filterTerminalLogs() {
     const entries = document.querySelectorAll('.terminal-body .log-entry');
 
     entries.forEach(entry => {
-        const level = entry.getAttribute('data-level');
+        const level = entry.dataset.level;
         if (filter === 'ALL' || filter === level) {
             entry.style.display = 'flex';
         } else {
@@ -213,11 +213,11 @@ function filterTerminalLogs() {
 
 function escapeHtml(str) {
     return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
 }
 
 // Payload Library Management
@@ -266,7 +266,7 @@ function renderLibrary() {
     const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
     const filtered = state.scripts.filter(s => 
         s.name.toLowerCase().includes(query) || 
-        (s.description && s.description.toLowerCase().includes(query))
+        s.description?.toLowerCase().includes(query)
     );
 
     if (filtered.length === 0) {
@@ -326,8 +326,7 @@ function loadScriptToEditor(name) {
 }
 
 async function quickRunScript(name) {
-    const s = state.scripts.find(item => item.name === name);
-    if (!s) return;
+    if (!state.scripts.some(item => item.name === name)) return;
 
     loadScriptToEditor(name);
     await runScript();

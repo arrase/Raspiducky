@@ -42,8 +42,20 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 	}()
 
-	// Inject `type(text)`
-	err := vm.Set("type", func(call goja.FunctionCall) goja.Value {
+	e.injectKeyboard(ctx, vm)
+	e.injectMouse(vm)
+	e.injectLED(ctx, vm)
+	e.injectUtils(ctx, vm, logWriter)
+
+	_, err := vm.RunString(jsCode)
+	if err != nil {
+		return fmt.Errorf("script execution error: %w", err)
+	}
+	return nil
+}
+
+func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
+	_ = vm.Set("type", func(call goja.FunctionCall) goja.Value {
 		if err := ctx.Err(); err != nil {
 			panic(vm.ToValue(err.Error()))
 		}
@@ -55,12 +67,8 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 		return goja.Undefined()
 	})
-	if err != nil {
-		return err
-	}
 
-	// Inject `press(keys)`
-	err = vm.Set("press", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("press", func(call goja.FunctionCall) goja.Value {
 		if err := ctx.Err(); err != nil {
 			panic(vm.ToValue(err.Error()))
 		}
@@ -72,30 +80,8 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 		return goja.Undefined()
 	})
-	if err != nil {
-		return err
-	}
 
-	// Inject `delay(ms)`
-	err = vm.Set("delay", func(call goja.FunctionCall) goja.Value {
-		ms := call.Argument(0).ToInteger()
-		if ms <= 0 {
-			return goja.Undefined()
-		}
-
-		select {
-		case <-ctx.Done():
-			panic(vm.ToValue(ctx.Err().Error()))
-		case <-time.After(time.Duration(ms) * time.Millisecond):
-		}
-		return goja.Undefined()
-	})
-	if err != nil {
-		return err
-	}
-
-	// Inject `layout(lang)`
-	err = vm.Set("layout", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("layout", func(call goja.FunctionCall) goja.Value {
 		lang := call.Argument(0).String()
 		if e.keyboard != nil {
 			if err := e.keyboard.SetLayout(lang); err != nil {
@@ -104,12 +90,8 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 		return goja.Undefined()
 	})
-	if err != nil {
-		return err
-	}
 
-	// Inject `typingSpeed(delay, jitter)`
-	err = vm.Set("typingSpeed", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("typingSpeed", func(call goja.FunctionCall) goja.Value {
 		d := int(call.Argument(0).ToInteger())
 		j := int(call.Argument(1).ToInteger())
 		if e.keyboard != nil {
@@ -117,12 +99,44 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 		return goja.Undefined()
 	})
-	if err != nil {
-		return err
-	}
+}
 
-	// Inject `waitLED(filter, timeout)`
-	err = vm.Set("waitLED", func(call goja.FunctionCall) goja.Value {
+func (e *ScriptEngine) injectMouse(vm *goja.Runtime) {
+	_ = vm.Set("mouseMove", func(call goja.FunctionCall) goja.Value {
+		x := int8(call.Argument(0).ToInteger())
+		y := int8(call.Argument(1).ToInteger())
+		if e.mouse != nil {
+			if err := e.mouse.Move(x, y); err != nil {
+				panic(vm.ToValue(err.Error()))
+			}
+		}
+		return goja.Undefined()
+	})
+
+	_ = vm.Set("mouseMoveTo", func(call goja.FunctionCall) goja.Value {
+		x := uint16(call.Argument(0).ToInteger())
+		y := uint16(call.Argument(1).ToInteger())
+		if e.mouse != nil {
+			if err := e.mouse.MoveTo(x, y); err != nil {
+				panic(vm.ToValue(err.Error()))
+			}
+		}
+		return goja.Undefined()
+	})
+
+	_ = vm.Set("mouseClick", func(call goja.FunctionCall) goja.Value {
+		btn := call.Argument(0).String()
+		if e.mouse != nil {
+			if err := e.mouse.Click(btn); err != nil {
+				panic(vm.ToValue(err.Error()))
+			}
+		}
+		return goja.Undefined()
+	})
+}
+
+func (e *ScriptEngine) injectLED(ctx context.Context, vm *goja.Runtime) {
+	_ = vm.Set("waitLED", func(call goja.FunctionCall) goja.Value {
 		filter := call.Argument(0).String()
 		timeoutMs := call.Argument(1).ToInteger()
 		if timeoutMs <= 0 {
@@ -146,55 +160,23 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 		}
 		return goja.Undefined()
 	})
-	if err != nil {
-		return err
-	}
+}
 
-	// Inject `mouseMove(x, y)`
-	err = vm.Set("mouseMove", func(call goja.FunctionCall) goja.Value {
-		x := int8(call.Argument(0).ToInteger())
-		y := int8(call.Argument(1).ToInteger())
-		if e.mouse != nil {
-			if err := e.mouse.Move(x, y); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+func (e *ScriptEngine) injectUtils(ctx context.Context, vm *goja.Runtime, logWriter io.Writer) {
+	_ = vm.Set("delay", func(call goja.FunctionCall) goja.Value {
+		ms := call.Argument(0).ToInteger()
+		if ms <= 0 {
+			return goja.Undefined()
+		}
+
+		select {
+		case <-ctx.Done():
+			panic(vm.ToValue(ctx.Err().Error()))
+		case <-time.After(time.Duration(ms) * time.Millisecond):
 		}
 		return goja.Undefined()
 	})
-	if err != nil {
-		return err
-	}
 
-	// Inject `mouseMoveTo(x, y)`
-	err = vm.Set("mouseMoveTo", func(call goja.FunctionCall) goja.Value {
-		x := uint16(call.Argument(0).ToInteger())
-		y := uint16(call.Argument(1).ToInteger())
-		if e.mouse != nil {
-			if err := e.mouse.MoveTo(x, y); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
-		}
-		return goja.Undefined()
-	})
-	if err != nil {
-		return err
-	}
-
-	// Inject `mouseClick(button)`
-	err = vm.Set("mouseClick", func(call goja.FunctionCall) goja.Value {
-		btn := call.Argument(0).String()
-		if e.mouse != nil {
-			if err := e.mouse.Click(btn); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
-		}
-		return goja.Undefined()
-	})
-	if err != nil {
-		return err
-	}
-
-	// Inject `log(...)` & `console.log(...)`
 	logFn := func(call goja.FunctionCall) goja.Value {
 		var args []string
 		for _, arg := range call.Arguments {
@@ -211,12 +193,6 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 	consoleObj := vm.NewObject()
 	_ = consoleObj.Set("log", logFn)
 	_ = vm.Set("console", consoleObj)
-
-	_, err = vm.RunString(jsCode)
-	if err != nil {
-		return fmt.Errorf("script execution error: %w", err)
-	}
-	return nil
 }
 
 // RunDuckyScript compiles DuckyScript source to JS and executes it.

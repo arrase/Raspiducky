@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+const (
+	defaultDelay1000 = "DELAY 1000\n"
+	defaultEnter     = "ENTER\n"
+	defaultJSDelay   = "    delay(200);\n"
+)
+
 // ScriptManager manages saving, loading, and deleting payload scripts.
 type ScriptManager struct {
 	mu         sync.RWMutex
@@ -105,7 +111,11 @@ func (sm *ScriptManager) SaveScript(s Script) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	filePath := filepath.Join(sm.storageDir, s.Name)
+	cleanDir := filepath.Clean(sm.storageDir)
+	filePath := filepath.Join(cleanDir, filepath.Base(s.Name))
+	if !strings.HasPrefix(filePath, cleanDir) {
+		return errors.New("invalid script path")
+	}
 	err := os.WriteFile(filePath, []byte(s.Content), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write script file: %w", err)
@@ -123,7 +133,11 @@ func (sm *ScriptManager) DeleteScript(name string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	filePath := filepath.Join(sm.storageDir, name)
+	cleanDir := filepath.Clean(sm.storageDir)
+	filePath := filepath.Join(cleanDir, filepath.Base(name))
+	if !strings.HasPrefix(filePath, cleanDir) {
+		return errors.New("invalid script path")
+	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("script '%s' not found", name)
 	}
@@ -147,24 +161,24 @@ func (sm *ScriptManager) seedDefaultScripts() error {
 			Name: "windows_reverse_shell.ducky",
 			Type: "duckyscript",
 			Content: "REM Windows Powershell Launcher\n" +
-				"DELAY 1000\n" +
+				defaultDelay1000 +
 				"GUI r\n" +
 				"DELAY 500\n" +
 				"STRING powershell -NoP -NonI -W Hidden -Exec Bypass -Command \"Write-Host Raspiducky Payload Executed!\"\n" +
-				"ENTER\n",
+				defaultEnter,
 		},
 		{
 			Name: "macos_terminal_opener.ducky",
 			Type: "duckyscript",
 			Content: "REM macOS Spotlight Launcher\n" +
-				"DELAY 1000\n" +
+				defaultDelay1000 +
 				"GUI SPACE\n" +
 				"DELAY 500\n" +
 				"STRING Terminal\n" +
-				"ENTER\n" +
-				"DELAY 1000\n" +
+				defaultEnter +
+				defaultDelay1000 +
 				"STRING echo \"Raspiducky macOS Payload Active!\"\n" +
-				"ENTER\n",
+				defaultEnter,
 		},
 		{
 			Name: "mouse_jiggler.js",
@@ -173,13 +187,13 @@ func (sm *ScriptManager) seedDefaultScripts() error {
 				"console.log(\"Starting Mouse Jiggler loop...\");\n" +
 				"for (let i = 0; i < 10; i++) {\n" +
 				"    mouseMove(10, 0);\n" +
-				"    delay(200);\n" +
+				defaultJSDelay +
 				"    mouseMove(0, 10);\n" +
-				"    delay(200);\n" +
+				defaultJSDelay +
 				"    mouseMove(-10, 0);\n" +
-				"    delay(200);\n" +
+				defaultJSDelay +
 				"    mouseMove(0, -10);\n" +
-				"    delay(200);\n" +
+				defaultJSDelay +
 				"}\n" +
 				"console.log(\"Jiggler finished!\");\n",
 		},

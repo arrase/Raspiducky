@@ -86,60 +86,60 @@
                         </div>
                         <div class="card-body">
                             <div class="toggle-group">
-                                <div class="toggle-item">
+                                <label class="toggle-item" for="gadget-keyboard">
                                     <div class="toggle-info">
                                         <span class="toggle-title">USB Keyboard (HID)</span>
                                         <span class="toggle-desc">Emulate Standard 104-key USB Keyboard</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="gadget-keyboard" checked>
+                                    <span class="switch">
+                                        <input type="checkbox" id="gadget-keyboard" aria-label="USB Keyboard (HID)" checked>
                                         <span class="slider"></span>
-                                    </label>
-                                </div>
+                                    </span>
+                                </label>
 
-                                <div class="toggle-item">
+                                <label class="toggle-item" for="gadget-mouse">
                                     <div class="toggle-info">
                                         <span class="toggle-title">USB Mouse (HID)</span>
                                         <span class="toggle-desc">Emulate USB Relative Optical Mouse</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="gadget-mouse" checked>
+                                    <span class="switch">
+                                        <input type="checkbox" id="gadget-mouse" aria-label="USB Mouse (HID)" checked>
                                         <span class="slider"></span>
-                                    </label>
-                                </div>
+                                    </span>
+                                </label>
 
-                                <div class="toggle-item">
+                                <label class="toggle-item" for="gadget-storage">
                                     <div class="toggle-info">
                                         <span class="toggle-title">Mass Storage</span>
                                         <span class="toggle-desc">Emulate USB Flash Drive / Disk Storage</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="gadget-storage">
+                                    <span class="switch">
+                                        <input type="checkbox" id="gadget-storage" aria-label="Mass Storage">
                                         <span class="slider"></span>
-                                    </label>
-                                </div>
+                                    </span>
+                                </label>
 
-                                <div class="toggle-item">
+                                <label class="toggle-item" for="gadget-ethernet">
                                     <div class="toggle-info">
                                         <span class="toggle-title">USB Ethernet (RNDIS/ECM)</span>
                                         <span class="toggle-desc">Emulate USB Network Adapter</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="gadget-ethernet">
+                                    <span class="switch">
+                                        <input type="checkbox" id="gadget-ethernet" aria-label="USB Ethernet (RNDIS/ECM)">
                                         <span class="slider"></span>
-                                    </label>
-                                </div>
+                                    </span>
+                                </label>
 
-                                <div class="toggle-item">
+                                <label class="toggle-item" for="gadget-serial">
                                     <div class="toggle-info">
                                         <span class="toggle-title">USB Serial Console (ACM)</span>
                                         <span class="toggle-desc">Emulate CDC-ACM Serial Port</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="gadget-serial">
+                                    <span class="switch">
+                                        <input type="checkbox" id="gadget-serial" aria-label="USB Serial Console (ACM)">
                                         <span class="slider"></span>
-                                    </label>
-                                </div>
+                                    </span>
+                                </label>
                             </div>
                             
                             <!-- Hardware Endpoint Limit Monitor -->
@@ -285,7 +285,7 @@
                             </div>
                             <div class="editor-body">
                                 <div class="line-numbers" id="line-numbers">1</div>
-                                <textarea id="code-editor" spellcheck="false" placeholder="Enter DuckyScript or HIDScript commands here...&#10;&#10;REM Example DuckyScript Payload&#10;DELAY 1000&#10;GUI r&#10;DELAY 500&#10;STRING notepad.exe&#10;ENTER&#10;DELAY 1000&#10;STRING Hello from Raspiducky!&#10;ENTER" oninput="updateLineNumbers()" onscroll="syncLineNumbersScroll()" onkeydown="handleEditorKeyDown(event)"></textarea>
+                                <textarea id="code-editor" aria-label="Script Code Editor" spellcheck="false" placeholder="Enter DuckyScript or HIDScript commands here...&#10;&#10;REM Example DuckyScript Payload&#10;DELAY 1000&#10;GUI r&#10;DELAY 500&#10;STRING notepad.exe&#10;ENTER&#10;DELAY 1000&#10;STRING Hello from Raspiducky!&#10;ENTER" oninput="updateLineNumbers()" onscroll="syncLineNumbersScroll()" onkeydown="handleEditorKeyDown(event)"></textarea>
                             </div>
                         </div>
 
@@ -299,7 +299,7 @@
                                     <h3>Live Console Output</h3>
                                 </div>
                                 <div class="terminal-controls">
-                                    <select id="log-filter" onchange="filterTerminalLogs()">
+                                    <select id="log-filter" aria-label="Filter Terminal Logs" onchange="filterTerminalLogs()">
                                         <option value="ALL">All Levels</option>
                                         <option value="INFO">INFO</option>
                                         <option value="WARN">WARN</option>
@@ -326,7 +326,7 @@
                 <div class="library-header glass-panel flex-between">
                     <div class="library-search">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" id="library-search-input" placeholder="Search saved payloads..." oninput="renderLibrary()">
+                        <input type="text" id="library-search-input" aria-label="Search saved payloads" placeholder="Search saved payloads..." oninput="renderLibrary()">
                     </div>
                     <div class="library-actions">
                         <button class="btn btn-primary" onclick="openNewScriptModal()">

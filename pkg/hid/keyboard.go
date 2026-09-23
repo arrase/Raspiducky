@@ -24,7 +24,7 @@ type Keyboard struct {
 }
 
 // NewKeyboard initializes a new Keyboard connected to the given device path with the specified layout.
-func NewKeyboard(devicePath string, layoutName string) (*Keyboard, error) {
+func NewKeyboard(devicePath, layoutName string) (*Keyboard, error) {
 	layout, err := GetLayout(layoutName)
 	if err != nil {
 		return nil, fmt.Errorf("loading keyboard layout %q: %w", layoutName, err)
@@ -81,7 +81,7 @@ func (kbd *Keyboard) GetLayoutName() string {
 }
 
 // SetTypingSpeed sets inter-keystroke delay and optional random jitter in milliseconds.
-func (kbd *Keyboard) SetTypingSpeed(delayMs int, jitterMs int) {
+func (kbd *Keyboard) SetTypingSpeed(delayMs, jitterMs int) {
 	kbd.mu.Lock()
 	defer kbd.mu.Unlock()
 	if delayMs < 0 {

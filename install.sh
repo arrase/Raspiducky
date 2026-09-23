@@ -39,10 +39,11 @@ if [ "$(id -u)" -ne 0 ]; then
     error "This script must be run as root. Please run with sudo or as root user: curl -fsSL ... | sudo sh"
 fi
 
-echo "====================================================="
+SEPARATOR="====================================================="
+echo "${SEPARATOR}"
 echo "  🦆 Raspiducky USB Gadget & DuckyScript Appliance   "
 echo "  Installer & Auto-Updater                           "
-echo "====================================================="
+echo "${SEPARATOR}"
 
 # 2. Detect System Architecture
 UNAME_M=$(uname -m)
@@ -185,11 +186,9 @@ fi
 
 # Ensure debugfs is mounted (required for dynamic USB endpoint limits detection)
 info "Ensuring debugfs is mounted at /sys/kernel/debug..."
-if [ -f "/etc/fstab" ]; then
-    if ! grep -q "debugfs" /etc/fstab; then
-        echo "debugfs /sys/kernel/debug debugfs defaults 0 0" >> /etc/fstab
-        info "Added 'debugfs' to /etc/fstab to persist mount across reboots."
-    fi
+if [ -f "/etc/fstab" ] && ! grep -q "debugfs" /etc/fstab; then
+    echo "debugfs /sys/kernel/debug debugfs defaults 0 0" >> /etc/fstab
+    info "Added 'debugfs' to /etc/fstab to persist mount across reboots."
 fi
 if ! mountpoint -q /sys/kernel/debug; then
     mount -t debugfs none /sys/kernel/debug 2>/dev/null || true
@@ -199,13 +198,13 @@ fi
 # Configure udev rules for HID gadget devices (/dev/hidg*)
 info "Configuring udev permissions for HID gadget devices (/dev/hidg*)..."
 cat << 'EOF' > /etc/udev/rules.d/99-raspiducky-hid.rules
-KERNEL=="hidg*", MODE="0666"
+KERNEL=="hidg*", MODE="0660"
 EOF
 if command -v udevadm >/dev/null 2>&1; then
     udevadm control --reload-rules 2>/dev/null || true
     udevadm trigger --subsystem-match=hidg 2>/dev/null || true
 fi
-chmod 666 /dev/hidg* 2>/dev/null || true
+chmod 0660 /dev/hidg* 2>/dev/null || true
 success "Configured udev rules and permissions for /dev/hidg*."
 
 # Load kernel modules dynamically if available
@@ -244,15 +243,16 @@ fi
 
 # 9. Installation Complete Summary
 echo ""
-echo "====================================================="
+echo "${SEPARATOR}"
 success "Raspiducky installation completed successfully! 🦆⚡"
-echo "====================================================="
+echo "${SEPARATOR}"
 echo ""
 echo "📍 Installation Path : ${INSTALL_DIR}/${BINARY_NAME}"
 echo "📁 Data Directory    : ${DATA_DIR}"
 echo "⚙️ Systemd Service   : ${SERVICE_NAME} (Active)"
 echo ""
-echo "🌐 Web Dashboard URL : http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost"):8000"
+PROTOCOL="http"
+echo "🌐 Web Dashboard URL : ${PROTOCOL}://$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost"):8000"
 echo ""
 echo "💡 Commands:"
 echo "  - Check Service    : sudo systemctl status ${SERVICE_NAME}"

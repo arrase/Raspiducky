@@ -17,6 +17,8 @@ import (
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
+const dummyUDC = "dummy.udc"
+
 // GadgetManager manages USB gadget configuration and status.
 type GadgetManager struct {
 	mu            sync.RWMutex
@@ -58,11 +60,12 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string, gadge
 	if storageDir != "" && storageDir != "/var/lib/raspiducky" {
 		udcDir := filepath.Join(storageDir, "udc")
 		_ = os.MkdirAll(udcDir, 0755)
-		_ = os.WriteFile(filepath.Join(udcDir, "dummy.udc"), []byte(""), 0644)
+		_ = os.WriteFile(filepath.Join(udcDir, dummyUDC), []byte(""), 0644)
 
 		debugFSDir := filepath.Join(storageDir, "debugfs")
-		_ = os.MkdirAll(filepath.Join(debugFSDir, "dummy.udc"), 0755)
-		_ = os.WriteFile(filepath.Join(debugFSDir, "dummy.udc", "hw_params"), []byte("num_dev_ep: 16\n"), 0644)
+		dummyDir := filepath.Join(debugFSDir, dummyUDC)
+		_ = os.MkdirAll(dummyDir, 0755)
+		_ = os.WriteFile(filepath.Join(dummyDir, "hw_params"), []byte("num_dev_ep: 16\n"), 0644)
 		_ = os.WriteFile(filepath.Join(debugFSDir, "devices"), []byte(""), 0644)
 
 		opts = append(opts,
@@ -133,66 +136,9 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		}
 	}
 
-	activeFuncs := make([]string, 0, 7)
-	if cfg.Keyboard {
-		activeFuncs = append(activeFuncs, "hid.usb0")
-	}
-	if cfg.Mouse {
-		activeFuncs = append(activeFuncs, "hid.usb1")
-	}
-	if cfg.Storage {
-		activeFuncs = append(activeFuncs, "mass_storage.usb0")
-	}
-	if cfg.Ethernet {
-		activeFuncs = append(activeFuncs, "rndis.usb0", "ecm.usb0")
-	}
-	if cfg.Serial {
-		activeFuncs = append(activeFuncs, "acm.usb0")
-	}
-
-	gadgetCfg := gadget.Config{
-		VID:          cfg.VendorID,
-		PID:          cfg.ProductID,
-		Manufacturer: cfg.Manufacturer,
-		Product:      cfg.Product,
-		Serial:       cfg.SerialNumber,
-		Keyboard:     cfg.Keyboard,
-		Mouse:        cfg.Mouse,
-	}
-
-	if cfg.Storage {
-		size := cfg.StorageSizeMB
-		if size <= 0 {
-			size = 100
-		}
-		diskPath := "/var/lib/raspiducky/disk.img"
-		if gm.storageDir != "" {
-			diskPath = filepath.Join(gm.storageDir, "disk.img")
-		}
-		if err := ensureBackingFile(diskPath, size); err != nil {
-			return GadgetStatus{}, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
-		}
-		gadgetCfg.MassStorage = gadget.MassStorageConfig{
-			Enabled:     true,
-			BackingFile: diskPath,
-		}
-	}
-	if cfg.Ethernet {
-		gadgetCfg.RNDIS = gadget.EthernetConfig{
-			Enabled:  true,
-			HostAddr: "02:00:00:00:00:01",
-			DevAddr:  "02:00:00:00:00:02",
-		}
-		gadgetCfg.ECM = gadget.EthernetConfig{
-			Enabled:  true,
-			HostAddr: "02:00:00:00:00:03",
-			DevAddr:  "02:00:00:00:00:04",
-		}
-	}
-	if cfg.Serial {
-		gadgetCfg.ACM = gadget.SerialConfig{
-			Enabled: true,
-		}
+	gadgetCfg, activeFuncs, err := buildGadgetConfig(cfg, gm.storageDir)
+	if err != nil {
+		return GadgetStatus{}, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -226,6 +172,72 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	return gm.currentStatus, nil
 }
 
+func buildGadgetConfig(cfg GadgetConfig, storageDir string) (gadget.Config, []string, error) {
+	activeFuncs := make([]string, 0, 7)
+	if cfg.Keyboard {
+		activeFuncs = append(activeFuncs, "hid.usb0")
+	}
+	if cfg.Mouse {
+		activeFuncs = append(activeFuncs, "hid.usb1")
+	}
+	if cfg.Storage {
+		activeFuncs = append(activeFuncs, "mass_storage.usb0")
+	}
+	if cfg.Ethernet {
+		activeFuncs = append(activeFuncs, "rndis.usb0", "ecm.usb0")
+	}
+	if cfg.Serial {
+		activeFuncs = append(activeFuncs, "acm.usb0")
+	}
+
+	gadgetCfg := gadget.Config{
+		VID:          cfg.VendorID,
+		PID:          cfg.ProductID,
+		Manufacturer: cfg.Manufacturer,
+		Product:      cfg.Product,
+		Serial:       cfg.SerialNumber,
+		Keyboard:     cfg.Keyboard,
+		Mouse:        cfg.Mouse,
+	}
+
+	if cfg.Storage {
+		size := cfg.StorageSizeMB
+		if size <= 0 {
+			size = 100
+		}
+		diskPath := "/var/lib/raspiducky/disk.img"
+		if storageDir != "" {
+			diskPath = filepath.Join(storageDir, "disk.img")
+		}
+		if err := ensureBackingFile(diskPath, size); err != nil {
+			return gadget.Config{}, nil, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
+		}
+		gadgetCfg.MassStorage = gadget.MassStorageConfig{
+			Enabled:     true,
+			BackingFile: diskPath,
+		}
+	}
+	if cfg.Ethernet {
+		gadgetCfg.RNDIS = gadget.EthernetConfig{
+			Enabled:  true,
+			HostAddr: "02:00:00:00:00:01",
+			DevAddr:  "02:00:00:00:00:02",
+		}
+		gadgetCfg.ECM = gadget.EthernetConfig{
+			Enabled:  true,
+			HostAddr: "02:00:00:00:00:03",
+			DevAddr:  "02:00:00:00:00:04",
+		}
+	}
+	if cfg.Serial {
+		gadgetCfg.ACM = gadget.SerialConfig{
+			Enabled: true,
+		}
+	}
+
+	return gadgetCfg, activeFuncs, nil
+}
+
 func validateGadgetConfig(cfg GadgetConfig) error {
 	if cfg.VendorID == "" || !strings.HasPrefix(cfg.VendorID, "0x") {
 		return errors.New("vendorId must be a hex string starting with 0x (e.g. 0x1d6b)")
@@ -246,29 +258,30 @@ func validateGadgetConfig(cfg GadgetConfig) error {
 }
 
 func ensureBackingFile(path string, sizeMB int) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		f, err := os.Create(path)
-		if err != nil {
-			return err
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil
 		}
-		defer f.Close()
+		return err
+	}
+	defer f.Close()
 
-		if err := f.Truncate(int64(sizeMB) * 1024 * 1024); err != nil {
-			return err
-		}
+	if err := f.Truncate(int64(sizeMB) * 1024 * 1024); err != nil {
+		return err
+	}
 
-		mkfsPath, err := exec.LookPath("mkfs.vfat")
-		if err != nil {
-			if _, statErr := os.Stat("/usr/sbin/mkfs.vfat"); statErr == nil {
-				mkfsPath = "/usr/sbin/mkfs.vfat"
-			} else {
-				return fmt.Errorf("mkfs.vfat executable not found: %w", err)
-			}
+	mkfsPath, err := exec.LookPath("mkfs.vfat")
+	if err != nil {
+		if _, statErr := os.Stat("/usr/sbin/mkfs.vfat"); statErr == nil {
+			mkfsPath = "/usr/sbin/mkfs.vfat"
+		} else {
+			return fmt.Errorf("mkfs.vfat executable not found: %w", err)
 		}
-		cmd := exec.Command(mkfsPath, path)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("formatting disk image with %s: %w", mkfsPath, err)
-		}
+	}
+	cmd := exec.Command(mkfsPath, path)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("formatting disk image with %s: %w", mkfsPath, err)
 	}
 	return nil
 }

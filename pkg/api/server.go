@@ -8,6 +8,8 @@ import (
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
+const errInvalidJSON = "Invalid JSON payload"
+
 // Server represents the Raspiducky REST API & Embedded Web Dashboard Server.
 type Server struct {
 	hub           *Hub
@@ -121,7 +123,7 @@ func (s *Server) handleGetGadget(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePostGadget(w http.ResponseWriter, r *http.Request) {
 	var cfg GadgetConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
+		writeError(w, http.StatusBadRequest, errInvalidJSON)
 		return
 	}
 
@@ -146,7 +148,7 @@ func (s *Server) handleGetScripts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePostScripts(w http.ResponseWriter, r *http.Request) {
 	var script Script
 	if err := json.NewDecoder(r.Body).Decode(&script); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
+		writeError(w, http.StatusBadRequest, errInvalidJSON)
 		return
 	}
 
@@ -179,7 +181,7 @@ func (s *Server) handleDeleteScript(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRunScript(w http.ResponseWriter, r *http.Request) {
 	var req RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
+		writeError(w, http.StatusBadRequest, errInvalidJSON)
 		return
 	}
 

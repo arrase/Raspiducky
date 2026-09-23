@@ -36,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mkdocs-material
+          pip install --only-binary :all: mkdocs-material==9.6.14
 
       - name: Build documentation
         run: |
