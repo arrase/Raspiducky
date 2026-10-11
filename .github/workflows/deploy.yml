@@ -5,6 +5,10 @@ on:
     branches:
       - master
       - main
+    paths:
+      - 'gh-pages/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:

@@ -2,6 +2,7 @@ site_name: Raspiducky
 site_description: Modern, high-performance USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi and Linux SBCs.
 site_author: Arrase
 site_url: https://arrase.github.io/Raspiducky/
+docs_dir: gh-pages
 
 repo_name: arrase/Raspiducky
 repo_url: https://github.com/arrase/Raspiducky
