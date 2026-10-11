@@ -29,11 +29,10 @@ const state = {
     wsReconnectTimer: null
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     initWebSocket();
-    loadGadgetStatus();
-    loadScriptsLibrary();
     updateLineNumbers();
+    await Promise.all([loadGadgetStatus(), loadScriptsLibrary()]);
 });
 
 // Tab Switching
