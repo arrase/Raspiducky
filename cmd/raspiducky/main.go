@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -71,23 +72,16 @@ func printUsage() {
 	fmt.Println("  -layout string   Keyboard layout (US, ES, DE, FR) (default \"US\")")
 }
 
-func initHIDDevices(ctx context.Context, layout string) (*hid.Keyboard, *hid.Mouse, *hid.LEDWatcher) {
+func initHIDDevices(ctx context.Context, layout string) (*hid.Keyboard, *hid.Mouse, *hid.LEDWatcher, error) {
 	kbd, err := hid.NewKeyboard("/dev/hidg0", layout)
 	if err != nil {
-		log.Printf("Warning: failed to initialize keyboard: %v", err)
+		return nil, nil, nil, fmt.Errorf("failed to initialize keyboard: %w", err)
 	}
 
-	mouse, err := hid.NewMouse("/dev/hidg1")
-	if err != nil {
-		log.Printf("Warning: failed to initialize mouse: %v", err)
-	}
+	mouse := hid.NewMouse("/dev/hidg1")
+	ledWatcher := hid.NewLEDWatcher(ctx, "/dev/hidg0")
 
-	ledWatcher, err := hid.NewLEDWatcher(ctx, "/dev/hidg0")
-	if err != nil {
-		log.Printf("Warning: failed to initialize LED watcher: %v", err)
-	}
-
-	return kbd, mouse, ledWatcher
+	return kbd, mouse, ledWatcher, nil
 }
 
 func runDaemon(args []string) error {
@@ -104,7 +98,13 @@ func runDaemon(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	kbd, mouse, ledWatcher := initHIDDevices(ctx, *layout)
+	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout)
+	if err != nil {
+		return err
+	}
+	defer kbd.Close()
+	defer mouse.Close()
+	defer ledWatcher.Close()
 
 	server, err := api.NewServer(api.ServerOptions{
 		StorageDir: *storageDir,
@@ -145,49 +145,54 @@ func runDaemon(args []string) error {
 }
 
 func runScriptCLI(args []string) error {
-	if len(args) < 1 {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	layout := fs.String("layout", "US", "Keyboard layout")
+
+	var filePath string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		filePath = args[0]
+		if err := fs.Parse(args[1:]); err != nil {
+			return fmt.Errorf("parsing flags: %w", err)
+		}
+	} else {
+		if err := fs.Parse(args); err != nil {
+			return fmt.Errorf("parsing flags: %w", err)
+		}
+		filePath = fs.Arg(0)
+	}
+	if filePath == "" {
 		return errors.New("usage: raspiducky run <script-file>")
 	}
 
-	filePath := args[0]
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("reading script file %s: %w", filePath, err)
 	}
 
-	scriptType := "js"
-	if filepath.Ext(filePath) == ".txt" || filepath.Ext(filePath) == ".ducky" {
-		scriptType = "ducky"
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout)
+	if err != nil {
+		return err
 	}
-
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	layout := fs.String("layout", "US", "Keyboard layout")
-	if err := fs.Parse(args[1:]); err != nil {
-		return fmt.Errorf("parsing flags: %w", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	kbd, mouse, ledWatcher := initHIDDevices(ctx, *layout)
+	defer kbd.Close()
+	defer mouse.Close()
+	defer ledWatcher.Close()
+	defer func() { _ = kbd.ReleaseKeys() }()
 
 	engine := scripting.NewScriptEngine(kbd, mouse, ledWatcher)
-	runner := scripting.NewRunner(engine)
 
-	job := runner.SubmitJob(scriptType, string(content))
-	log.Printf("Started script job %s (%s)", job.ID, job.ScriptType)
-
-	// Wait for job completion
-	for {
-		time.Sleep(200 * time.Millisecond)
-		j, ok := runner.GetJob(job.ID)
-		if !ok || j.Status == scripting.StatusCompleted || j.Status == scripting.StatusFailed || j.Status == scripting.StatusCancelled {
-			if j != nil && j.Error != "" {
-				return fmt.Errorf("job error: %s", j.Error)
-			}
-			log.Println("Script execution finished cleanly.")
-			break
-		}
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext == ".txt" || ext == ".ducky" {
+		err = engine.RunDuckyScript(ctx, string(content), os.Stdout)
+	} else {
+		err = engine.RunJS(ctx, string(content), os.Stdout)
 	}
+	if err != nil {
+		return err
+	}
+
+	log.Println("Script execution finished cleanly.")
 	return nil
 }

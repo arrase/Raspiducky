@@ -14,34 +14,61 @@ func ParseDuckyScript(duckySource string) (string, error) {
 
 	defaultDelay := 0
 	var lastJSCommand string
+	lineNum := 0
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+		lineNum++
+		line := strings.TrimLeft(strings.TrimRight(scanner.Text(), "\r\n"), " \t")
 		if line == "" {
 			continue
 		}
 
-		if comment, ok := parseComment(line); ok {
-			jsLines = append(jsLines, comment)
+		parts := strings.SplitN(line, " ", 2)
+		cmd := strings.ToUpper(parts[0])
+		arg := ""
+		if len(parts) > 1 {
+			arg = parts[1]
+		}
+
+		switch cmd {
+		case "REM":
+			jsLines = append(jsLines, fmt.Sprintf("// %s", strings.TrimSpace(arg)))
+			continue
+
+		case "DEFAULT_DELAY", "DEFAULTDELAY":
+			fields := strings.Fields(arg)
+			if len(fields) == 0 {
+				return "", fmt.Errorf("line %d: %s requires a delay argument", lineNum, cmd)
+			}
+			delayVal, err := strconv.Atoi(fields[0])
+			if err != nil || delayVal < 0 {
+				return "", fmt.Errorf("line %d: invalid %s value %q", lineNum, cmd, fields[0])
+			}
+			defaultDelay = delayVal
+			jsLines = append(jsLines, fmt.Sprintf("// Default delay set to %d ms", delayVal))
+			continue
+
+		case "REPEAT":
+			if lastJSCommand == "" {
+				return "", fmt.Errorf("line %d: REPEAT has no preceding command to repeat", lineNum)
+			}
+			fields := strings.Fields(arg)
+			if len(fields) == 0 {
+				return "", fmt.Errorf("line %d: REPEAT requires a count argument", lineNum)
+			}
+			count, err := strconv.Atoi(fields[0])
+			if err != nil || count <= 0 {
+				return "", fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, fields[0])
+			}
+			body := lastJSCommand
+			if defaultDelay > 0 {
+				body = fmt.Sprintf("%s delay(%d);", lastJSCommand, defaultDelay)
+			}
+			jsLines = append(jsLines, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, body))
 			continue
 		}
 
-		if delay, comment, ok := parseDefaultDelay(line); ok {
-			defaultDelay = delay
-			jsLines = append(jsLines, comment)
-			continue
-		}
-
-		if repeatLines, ok := parseRepeat(line, lastJSCommand, defaultDelay); ok {
-			jsLines = append(jsLines, repeatLines...)
-			continue
-		}
-
-		jsCmd := translateLineToJS(line)
-		if jsCmd == "" {
-			continue
-		}
-
+		jsCmd := translateCommandToJS(cmd, arg, line)
 		jsLines = append(jsLines, jsCmd)
 		lastJSCommand = jsCmd
 
@@ -55,45 +82,6 @@ func ParseDuckyScript(duckySource string) (string, error) {
 	}
 
 	return strings.Join(jsLines, "\n"), nil
-}
-
-func parseComment(line string) (string, bool) {
-	if line == "REM" || strings.HasPrefix(line, "REM ") {
-		comment := strings.TrimSpace(strings.TrimPrefix(line, "REM"))
-		return fmt.Sprintf("// %s", comment), true
-	}
-	return "", false
-}
-
-func parseDefaultDelay(line string) (int, string, bool) {
-	if strings.HasPrefix(line, "DEFAULT_DELAY") || strings.HasPrefix(line, "DEFAULTDELAY") {
-		parts := strings.Fields(line)
-		if len(parts) >= 2 {
-			if delayVal, err := strconv.Atoi(parts[1]); err == nil {
-				return delayVal, fmt.Sprintf("// Default delay set to %d ms", delayVal), true
-			}
-		}
-	}
-	return 0, "", false
-}
-
-func parseRepeat(line, lastJSCommand string, defaultDelay int) ([]string, bool) {
-	if !strings.HasPrefix(line, "REPEAT") || lastJSCommand == "" {
-		return nil, false
-	}
-	parts := strings.Fields(line)
-	if len(parts) < 2 {
-		return nil, false
-	}
-	count, err := strconv.Atoi(parts[1])
-	if err != nil || count <= 0 {
-		return nil, false
-	}
-	res := []string{fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, lastJSCommand)}
-	if defaultDelay > 0 {
-		res = append(res, fmt.Sprintf("delay(%d);", defaultDelay))
-	}
-	return res, true
 }
 
 func parseCoordinates(arg string) (int, int) {
@@ -127,14 +115,7 @@ func translateMouseCommand(cmd, arg string) (string, bool) {
 	}
 }
 
-func translateLineToJS(line string) string {
-	parts := strings.SplitN(line, " ", 2)
-	cmd := strings.ToUpper(parts[0])
-	arg := ""
-	if len(parts) > 1 {
-		arg = parts[1]
-	}
-
+func translateCommandToJS(cmd, arg, line string) string {
 	if js, ok := translateMouseCommand(cmd, arg); ok {
 		return js
 	}
@@ -173,8 +154,22 @@ func translateLineToJS(line string) string {
 		return fmt.Sprintf("waitLED(%s, %d);", strconv.Quote(filter), timeout)
 
 	default:
-		// Check for key combinations like "GUI r", "CTRL-ALT DELETE", "ENTER", etc.
-		normalized := strings.ReplaceAll(line, "-", " ")
-		return fmt.Sprintf("press(%s);", strconv.Quote(normalized))
+		return parseComboOrSingleKey(line)
 	}
+}
+
+func parseComboOrSingleKey(line string) string {
+	var tokens []string
+	for _, field := range strings.Fields(line) {
+		if field == "-" {
+			tokens = append(tokens, "-")
+			continue
+		}
+		for _, part := range strings.Split(field, "-") {
+			if part != "" {
+				tokens = append(tokens, part)
+			}
+		}
+	}
+	return fmt.Sprintf("press(%s);", strconv.Quote(strings.Join(tokens, " ")))
 }

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/arrase/Raspiducky/pkg/gadget"
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
@@ -26,6 +28,7 @@ type ServerOptions struct {
 	Keyboard   *hid.Keyboard
 	Mouse      *hid.Mouse
 	LEDWatcher *hid.LEDWatcher
+	GadgetOpts []gadget.Option
 }
 
 // NewServer initializes a new Raspiducky API Server instance.
@@ -33,7 +36,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	hub := NewHub()
 	go hub.Run()
 
-	gm := NewGadgetManager(hub, opts.Keyboard, opts.StorageDir)
+	gm := NewGadgetManager(hub, opts.Keyboard, opts.Mouse, opts.StorageDir, opts.GadgetOpts...)
 
 	sm, err := NewScriptManager(opts.StorageDir)
 	if err != nil {
@@ -93,9 +96,18 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.ledWatcher != nil {
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 		_ = conn.WriteJSON(WSMessage{
 			Type:    "led_state",
 			Payload: s.ledWatcher.GetState(),
+		})
+	}
+
+	if job := s.runnerEngine.GetActiveJob(); job != nil {
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+		_ = conn.WriteJSON(WSMessage{
+			Type:    "job_status",
+			Payload: job,
 		})
 	}
 
@@ -152,14 +164,15 @@ func (s *Server) handlePostScripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.scriptManager.SaveScript(script); err != nil {
+	savedName, err := s.scriptManager.SaveScript(script)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]string{
 		"message": "Script saved successfully",
-		"name":    script.Name,
+		"name":    savedName,
 	})
 }
 

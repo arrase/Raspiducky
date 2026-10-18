@@ -25,10 +25,6 @@ type ScriptManager struct {
 
 // NewScriptManager initializes the script manager with a target directory.
 func NewScriptManager(storageDir string) (*ScriptManager, error) {
-	if storageDir == "" {
-		storageDir = "./payloads"
-	}
-
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create script storage directory: %w", err)
 	}
@@ -43,6 +39,11 @@ func NewScriptManager(storageDir string) (*ScriptManager, error) {
 	}
 
 	return sm, nil
+}
+
+func isScriptFile(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.HasSuffix(lower, ".ducky") || strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".txt")
 }
 
 // ListScripts returns all saved scripts from disk.
@@ -62,7 +63,7 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 		}
 
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".ducky") && !strings.HasSuffix(name, ".js") && !strings.HasSuffix(name, ".txt") {
+		if !isScriptFile(name) {
 			continue
 		}
 
@@ -80,7 +81,7 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 		}
 
 		scriptType := "duckyscript"
-		if strings.HasSuffix(name, ".js") {
+		if strings.HasSuffix(strings.ToLower(name), ".js") {
 			scriptType = "javascript"
 		}
 
@@ -96,54 +97,80 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 	return scripts, nil
 }
 
-// SaveScript writes a script to disk.
-func (sm *ScriptManager) SaveScript(s Script) error {
-	if s.Name == "" {
-		return errors.New("script name cannot be empty")
+func (sm *ScriptManager) resolveScriptPath(name string) (string, error) {
+	if name == "" || name == "." || name == ".." ||
+		strings.ContainsAny(name, "/\\\x00") ||
+		strings.Contains(name, "..") ||
+		filepath.Base(name) != name {
+		return "", errors.New("invalid script name")
 	}
-	if strings.Contains(s.Name, "/") || strings.Contains(s.Name, "..") {
-		return errors.New("invalid script name format")
+
+	cleanDir := filepath.Clean(sm.storageDir)
+	filePath := filepath.Join(cleanDir, name)
+	if filepath.Dir(filePath) != cleanDir {
+		return "", errors.New("invalid script path")
 	}
-	if s.Content == "" {
-		return errors.New("script content cannot be empty")
+
+	return filePath, nil
+}
+
+func normalizeScriptName(name, scriptType string) string {
+	stem := name
+	lower := strings.ToLower(name)
+	for _, ext := range []string{".ducky", ".txt", ".js"} {
+		if strings.HasSuffix(lower, ext) {
+			stem = name[:len(name)-len(ext)]
+			break
+		}
+	}
+	if strings.TrimSpace(stem) == "" {
+		return ""
+	}
+	if strings.EqualFold(scriptType, "javascript") || strings.EqualFold(scriptType, "js") {
+		return stem + ".js"
+	}
+	if strings.HasSuffix(lower, ".txt") {
+		return stem + ".txt"
+	}
+	return stem + ".ducky"
+}
+
+// SaveScript writes a script to disk and returns its normalized filename.
+func (sm *ScriptManager) SaveScript(s Script) (string, error) {
+	normalized := normalizeScriptName(s.Name, s.Type)
+	filePath, err := sm.resolveScriptPath(normalized)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(s.Content) == "" {
+		return "", errors.New("script content cannot be empty")
 	}
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	cleanDir := filepath.Clean(sm.storageDir)
-	filePath := filepath.Join(cleanDir, filepath.Base(s.Name))
-	if !strings.HasPrefix(filePath, cleanDir) {
-		return errors.New("invalid script path")
-	}
-	err := os.WriteFile(filePath, []byte(s.Content), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write script file: %w", err)
+	if err := os.WriteFile(filePath, []byte(s.Content), 0644); err != nil {
+		return "", fmt.Errorf("failed to write script file: %w", err)
 	}
 
-	return nil
+	return normalized, nil
 }
 
 // DeleteScript removes a script from disk.
 func (sm *ScriptManager) DeleteScript(name string) error {
-	if name == "" || strings.Contains(name, "/") || strings.Contains(name, "..") {
-		return errors.New("invalid script name")
+	filePath, err := sm.resolveScriptPath(name)
+	if err != nil {
+		return err
 	}
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	cleanDir := filepath.Clean(sm.storageDir)
-	filePath := filepath.Join(cleanDir, filepath.Base(name))
-	if !strings.HasPrefix(filePath, cleanDir) {
-		return errors.New("invalid script path")
-	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("script '%s' not found", name)
 	}
 
-	err := os.Remove(filePath)
-	if err != nil {
+	if err := os.Remove(filePath); err != nil {
 		return fmt.Errorf("failed to delete script file: %w", err)
 	}
 
@@ -152,8 +179,12 @@ func (sm *ScriptManager) DeleteScript(name string) error {
 
 func (sm *ScriptManager) seedDefaultScripts() error {
 	entries, err := os.ReadDir(sm.storageDir)
-	if err == nil && len(entries) > 0 {
-		return nil // Directory already populated
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && isScriptFile(entry.Name()) {
+				return nil // Directory already contains scripts
+			}
+		}
 	}
 
 	defaults := []Script{

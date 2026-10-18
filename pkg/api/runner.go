@@ -38,7 +38,11 @@ func NewRunnerEngine(hub *Hub, keyboard *hid.Keyboard, mouse *hid.Mouse, ledWatc
 func (re *RunnerEngine) GetActiveJob() *JobStatus {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	return re.activeJob
+	if re.activeJob == nil {
+		return nil
+	}
+	cp := *re.activeJob
+	return &cp
 }
 
 // Run triggers execution of a script (DuckyScript or JavaScript).
@@ -53,7 +57,7 @@ func (re *RunnerEngine) Run(req RunRequest) (JobStatus, error) {
 		return JobStatus{}, errors.New("a job is already running, stop it before starting a new one")
 	}
 
-	jobID := fmt.Sprintf("job-%d", time.Now().UnixNano()%100000)
+	jobID := fmt.Sprintf("job-%d", time.Now().UnixNano())
 	scriptName := req.Name
 	if scriptName == "" {
 		scriptName = "inline_payload"
@@ -91,9 +95,7 @@ func (re *RunnerEngine) Stop() error {
 		return errors.New("no active job is currently running")
 	}
 
-	if re.cancelFn != nil {
-		re.cancelFn()
-	}
+	re.cancelFn()
 
 	now := time.Now()
 	re.activeJob.Status = "stopped"
@@ -115,12 +117,18 @@ func (w *wsLogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func isJSScript(scriptType, scriptName string) bool {
+	return strings.EqualFold(scriptType, "javascript") ||
+		strings.EqualFold(scriptType, "js") ||
+		(scriptType == "" && strings.HasSuffix(strings.ToLower(scriptName), ".js"))
+}
+
 func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptContent string) {
 	var execErr error
 
 	engine := scripting.NewScriptEngine(re.keyboard, re.mouse, re.ledWatcher)
 
-	if job.Type == "javascript" {
+	if isJSScript(job.Type, job.ScriptName) {
 		execErr = engine.RunJS(ctx, scriptContent, &wsLogWriter{re: re, source: "JS"})
 	} else {
 		execErr = engine.RunDuckyScript(ctx, scriptContent, &wsLogWriter{re: re, source: "DUCKY"})
@@ -128,6 +136,10 @@ func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptCon
 
 	re.mu.Lock()
 	defer re.mu.Unlock()
+
+	if re.activeJob == nil || re.activeJob.ID != job.ID || re.activeJob.Status == "stopped" {
+		return
+	}
 
 	now := time.Now()
 	job.FinishedAt = &now
@@ -150,21 +162,17 @@ func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptCon
 func (re *RunnerEngine) broadcastLog(level, source, message string) {
 	sanitizedMsg := strings.ReplaceAll(strings.ReplaceAll(message, "\n", " "), "\r", " ")
 	log.Printf("[%s] %s: %s", level, source, sanitizedMsg)
-	if re.hub != nil {
-		re.hub.Broadcast(WSMessage{
-			Type:    "log",
-			Level:   level,
-			Source:  source,
-			Message: message,
-		})
-	}
+	re.hub.Broadcast(WSMessage{
+		Type:    "log",
+		Level:   level,
+		Source:  source,
+		Message: message,
+	})
 }
 
 func (re *RunnerEngine) broadcastJobStatus(job JobStatus) {
-	if re.hub != nil {
-		re.hub.Broadcast(WSMessage{
-			Type:    "job_status",
-			Payload: job,
-		})
-	}
+	re.hub.Broadcast(WSMessage{
+		Type:    "job_status",
+		Payload: job,
+	})
 }

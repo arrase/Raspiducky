@@ -56,9 +56,6 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 
 func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
 	_ = vm.Set("type", func(call goja.FunctionCall) goja.Value {
-		if err := ctx.Err(); err != nil {
-			panic(vm.ToValue(err.Error()))
-		}
 		text := call.Argument(0).String()
 		if e.keyboard != nil {
 			if err := e.keyboard.TypeString(ctx, text); err != nil {
@@ -69,9 +66,6 @@ func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
 	})
 
 	_ = vm.Set("press", func(call goja.FunctionCall) goja.Value {
-		if err := ctx.Err(); err != nil {
-			panic(vm.ToValue(err.Error()))
-		}
 		keys := call.Argument(0).String()
 		if e.keyboard != nil {
 			if err := e.keyboard.Press(ctx, keys); err != nil {
@@ -101,10 +95,20 @@ func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
 	})
 }
 
+func clampInt8(v int64) int8 {
+	if v > 127 {
+		return 127
+	}
+	if v < -127 {
+		return -127
+	}
+	return int8(v)
+}
+
 func (e *ScriptEngine) injectMouse(vm *goja.Runtime) {
 	_ = vm.Set("mouseMove", func(call goja.FunctionCall) goja.Value {
-		x := int8(call.Argument(0).ToInteger())
-		y := int8(call.Argument(1).ToInteger())
+		x := clampInt8(call.Argument(0).ToInteger())
+		y := clampInt8(call.Argument(1).ToInteger())
 		if e.mouse != nil {
 			if err := e.mouse.Move(x, y); err != nil {
 				panic(vm.ToValue(err.Error()))
@@ -125,7 +129,10 @@ func (e *ScriptEngine) injectMouse(vm *goja.Runtime) {
 	})
 
 	_ = vm.Set("mouseClick", func(call goja.FunctionCall) goja.Value {
-		btn := call.Argument(0).String()
+		btn := "left"
+		if len(call.Arguments) > 0 && !goja.IsUndefined(call.Argument(0)) && !goja.IsNull(call.Argument(0)) {
+			btn = call.Argument(0).String()
+		}
 		if e.mouse != nil {
 			if err := e.mouse.Click(btn); err != nil {
 				panic(vm.ToValue(err.Error()))
@@ -137,8 +144,14 @@ func (e *ScriptEngine) injectMouse(vm *goja.Runtime) {
 
 func (e *ScriptEngine) injectLED(ctx context.Context, vm *goja.Runtime) {
 	_ = vm.Set("waitLED", func(call goja.FunctionCall) goja.Value {
-		filter := call.Argument(0).String()
-		timeoutMs := call.Argument(1).ToInteger()
+		filter := "ANY"
+		if len(call.Arguments) > 0 && !goja.IsUndefined(call.Argument(0)) && !goja.IsNull(call.Argument(0)) {
+			filter = call.Argument(0).String()
+		}
+		var timeoutMs int64 = 5000
+		if len(call.Arguments) > 1 && !goja.IsUndefined(call.Argument(1)) && !goja.IsNull(call.Argument(1)) {
+			timeoutMs = call.Argument(1).ToInteger()
+		}
 		if timeoutMs <= 0 {
 			timeoutMs = 5000
 		}
@@ -183,9 +196,7 @@ func (e *ScriptEngine) injectUtils(ctx context.Context, vm *goja.Runtime, logWri
 			args = append(args, arg.String())
 		}
 		msg := strings.Join(args, " ") + "\n"
-		if logWriter != nil {
-			_, _ = logWriter.Write([]byte(msg))
-		}
+		_, _ = logWriter.Write([]byte(msg))
 		return goja.Undefined()
 	}
 

@@ -17,16 +17,6 @@ func NewKeyboardReport(modifiers uint8, keycodes ...uint8) KeyboardReport {
 	return r
 }
 
-// EmptyKeyboardReport returns a zeroed KeyboardReport (key release).
-func EmptyKeyboardReport() KeyboardReport {
-	return KeyboardReport{}
-}
-
-// Modifiers returns the modifier bitmask of the report.
-func (r KeyboardReport) Modifiers() uint8 {
-	return r[0]
-}
-
 // KeyCodes returns the keycodes slice (non-zero entries).
 func (r KeyboardReport) KeyCodes() []uint8 {
 	var keys []uint8
