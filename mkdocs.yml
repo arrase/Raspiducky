@@ -20,20 +20,23 @@ nav:
 theme:
   name: material
   language: en
+  font:
+    text: Inter
+    code: JetBrains Mono
   icon:
     logo: material/usb
   palette:
     # Palette toggle for light/dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
+      primary: custom
       accent: indigo
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
+      primary: custom
       accent: indigo
       toggle:
         icon: material/brightness-7
@@ -45,9 +48,11 @@ theme:
     - navigation.sections
     - content.code.copy
 
-plugins: []
+plugins:
+  - search
 
 extra_javascript:
+  - javascripts/ecosystem.js
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
