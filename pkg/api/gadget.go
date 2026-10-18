@@ -3,21 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/gadget"
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
-
-const dummyUDC = "dummy.udc"
 
 // GadgetManager manages USB gadget configuration and status.
 type GadgetManager struct {
@@ -26,11 +22,12 @@ type GadgetManager struct {
 	hub           *Hub
 	gm            *gadget.GadgetManager
 	keyboard      *hid.Keyboard
+	mouse         *hid.Mouse
 	storageDir    string
 }
 
 // NewGadgetManager initializes a new GadgetManager instance.
-func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string, gadgetOpts ...gadget.Option) *GadgetManager {
+func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, mouse *hid.Mouse, storageDir string, gadgetOpts ...gadget.Option) *GadgetManager {
 	initialCfg := GadgetConfig{
 		Keyboard:       true,
 		Mouse:          true,
@@ -47,6 +44,7 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string, gadge
 	}
 
 	if storageDir != "" {
+		_ = os.MkdirAll(storageDir, 0755)
 		cfgPath := filepath.Join(storageDir, "gadget_config.json")
 		if data, err := os.ReadFile(cfgPath); err == nil {
 			var savedCfg GadgetConfig
@@ -56,30 +54,11 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string, gadge
 		}
 	}
 
-	var opts []gadget.Option
-	if storageDir != "" && storageDir != "/var/lib/raspiducky" {
-		udcDir := filepath.Join(storageDir, "udc")
-		_ = os.MkdirAll(udcDir, 0755)
-		_ = os.WriteFile(filepath.Join(udcDir, dummyUDC), []byte(""), 0644)
-
-		debugFSDir := filepath.Join(storageDir, "debugfs")
-		dummyDir := filepath.Join(debugFSDir, dummyUDC)
-		_ = os.MkdirAll(dummyDir, 0755)
-		_ = os.WriteFile(filepath.Join(dummyDir, "hw_params"), []byte("num_dev_ep: 16\n"), 0644)
-		_ = os.WriteFile(filepath.Join(debugFSDir, "devices"), []byte(""), 0644)
-
-		opts = append(opts,
-			gadget.WithBaseDir(filepath.Join(storageDir, "usb_gadget")),
-			gadget.WithUDCDir(udcDir),
-			gadget.WithDebugFSDir(debugFSDir),
-		)
-	}
-	opts = append(opts, gadgetOpts...)
-
 	manager := &GadgetManager{
 		hub:        hub,
-		gm:         gadget.NewGadgetManager(opts...),
+		gm:         gadget.NewGadgetManager(gadgetOpts...),
 		keyboard:   keyboard,
+		mouse:      mouse,
 		storageDir: storageDir,
 		currentStatus: GadgetStatus{
 			Deployed:        false,
@@ -97,38 +76,57 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, storageDir string, gadge
 	return manager
 }
 
+func (gm *GadgetManager) refreshHardwareStatus(status *GadgetStatus) {
+	if udc, err := gm.gm.GetUDCName(); err == nil {
+		status.UDC = udc
+	} else {
+		status.UDC = ""
+	}
+	if maxEp, err := gm.gm.GetMaxEndpoints(); err == nil {
+		status.MaxEndpoints = maxEp
+	} else {
+		status.MaxEndpoints = 0
+	}
+}
+
 // GetStatus returns the current USB gadget status and config.
 func (gm *GadgetManager) GetStatus() GadgetStatus {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
 
 	status := gm.currentStatus
-	if gm.currentStatus.ActiveFunctions != nil {
-		status.ActiveFunctions = make([]string, len(gm.currentStatus.ActiveFunctions))
-		copy(status.ActiveFunctions, gm.currentStatus.ActiveFunctions)
-	}
+	status.ActiveFunctions = make([]string, len(gm.currentStatus.ActiveFunctions))
+	copy(status.ActiveFunctions, gm.currentStatus.ActiveFunctions)
 
-	if udc, err := gm.gm.GetUDCName(); err == nil {
-		status.UDC = udc
-	}
-
-	if maxEp, err := gm.gm.GetMaxEndpoints(); err == nil {
-		status.MaxEndpoints = maxEp
-	} else {
-		status.MaxEndpoints = 0
-	}
+	gm.refreshHardwareStatus(&status)
 
 	return status
 }
 
 // UpdateConfig applies and deploys a new USB gadget configuration.
 func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
-	if err := validateGadgetConfig(cfg); err != nil {
+	gadgetCfg, activeFuncs := buildGadgetConfig(cfg, gm.storageDir)
+	if err := gadgetCfg.Validate(); err != nil {
 		return GadgetStatus{}, fmt.Errorf("invalid gadget config: %w", err)
+	}
+	if cfg.KeyboardLayout != "" {
+		if _, err := hid.GetLayout(cfg.KeyboardLayout); err != nil {
+			return GadgetStatus{}, fmt.Errorf("invalid keyboard layout: %w", err)
+		}
 	}
 
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
+
+	if cfg.Storage {
+		size := cfg.StorageSizeMB
+		if size <= 0 {
+			size = 100
+		}
+		if err := ensureBackingFile(gadgetCfg.MassStorage.BackingFile, size); err != nil {
+			return GadgetStatus{}, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
+		}
+	}
 
 	if cfg.KeyboardLayout != "" && gm.keyboard != nil {
 		if err := gm.keyboard.SetLayout(cfg.KeyboardLayout); err != nil {
@@ -136,9 +134,11 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		}
 	}
 
-	gadgetCfg, activeFuncs, err := buildGadgetConfig(cfg, gm.storageDir)
-	if err != nil {
-		return GadgetStatus{}, err
+	if gm.keyboard != nil {
+		_ = gm.keyboard.Close()
+	}
+	if gm.mouse != nil {
+		_ = gm.mouse.Close()
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -146,6 +146,14 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 
 	if err := gm.gm.Deploy(ctx, gadgetCfg); err != nil {
 		return GadgetStatus{}, fmt.Errorf("failed to deploy configfs: %w", err)
+	}
+
+	if gm.mouse != nil {
+		if !cfg.Keyboard && cfg.Mouse {
+			gm.mouse.SetDevicePath("/dev/hidg0")
+		} else {
+			gm.mouse.SetDevicePath("/dev/hidg1")
+		}
 	}
 
 	gm.currentStatus.Config = cfg
@@ -158,36 +166,32 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		}
 	}
 
-	if udc, err := gm.gm.GetUDCName(); err == nil {
-		gm.currentStatus.UDC = udc
-	}
+	gm.refreshHardwareStatus(&gm.currentStatus)
 
-	if gm.hub != nil {
-		gm.hub.Broadcast(WSMessage{
-			Type:    "gadget_status",
-			Payload: gm.currentStatus,
-		})
-	}
+	gm.hub.Broadcast(WSMessage{
+		Type:    "gadget_status",
+		Payload: gm.currentStatus,
+	})
 
 	return gm.currentStatus, nil
 }
 
-func buildGadgetConfig(cfg GadgetConfig, storageDir string) (gadget.Config, []string, error) {
+func buildGadgetConfig(cfg GadgetConfig, storageDir string) (gadget.Config, []string) {
 	activeFuncs := make([]string, 0, 7)
 	if cfg.Keyboard {
-		activeFuncs = append(activeFuncs, "hid.usb0")
+		activeFuncs = append(activeFuncs, gadget.FuncKeyboard)
 	}
 	if cfg.Mouse {
-		activeFuncs = append(activeFuncs, "hid.usb1")
+		activeFuncs = append(activeFuncs, gadget.FuncMouse)
 	}
 	if cfg.Storage {
-		activeFuncs = append(activeFuncs, "mass_storage.usb0")
+		activeFuncs = append(activeFuncs, gadget.FuncMassStorage)
 	}
 	if cfg.Ethernet {
-		activeFuncs = append(activeFuncs, "rndis.usb0", "ecm.usb0")
+		activeFuncs = append(activeFuncs, gadget.FuncRNDIS, gadget.FuncECM)
 	}
 	if cfg.Serial {
-		activeFuncs = append(activeFuncs, "acm.usb0")
+		activeFuncs = append(activeFuncs, gadget.FuncACM)
 	}
 
 	gadgetCfg := gadget.Config{
@@ -201,16 +205,9 @@ func buildGadgetConfig(cfg GadgetConfig, storageDir string) (gadget.Config, []st
 	}
 
 	if cfg.Storage {
-		size := cfg.StorageSizeMB
-		if size <= 0 {
-			size = 100
-		}
 		diskPath := "/var/lib/raspiducky/disk.img"
 		if storageDir != "" {
 			diskPath = filepath.Join(storageDir, "disk.img")
-		}
-		if err := ensureBackingFile(diskPath, size); err != nil {
-			return gadget.Config{}, nil, fmt.Errorf("failed to ensure mass storage backing file: %w", err)
 		}
 		gadgetCfg.MassStorage = gadget.MassStorageConfig{
 			Enabled:     true,
@@ -235,52 +232,42 @@ func buildGadgetConfig(cfg GadgetConfig, storageDir string) (gadget.Config, []st
 		}
 	}
 
-	return gadgetCfg, activeFuncs, nil
-}
-
-func validateGadgetConfig(cfg GadgetConfig) error {
-	if cfg.VendorID == "" || !strings.HasPrefix(cfg.VendorID, "0x") {
-		return errors.New("vendorId must be a hex string starting with 0x (e.g. 0x1d6b)")
-	}
-	if cfg.ProductID == "" || !strings.HasPrefix(cfg.ProductID, "0x") {
-		return errors.New("productId must be a hex string starting with 0x (e.g. 0x0104)")
-	}
-	if cfg.Manufacturer == "" {
-		return errors.New("manufacturer string cannot be empty")
-	}
-	if cfg.Product == "" {
-		return errors.New("product string cannot be empty")
-	}
-	if !cfg.Keyboard && !cfg.Mouse && !cfg.Storage && !cfg.Ethernet && !cfg.Serial {
-		return errors.New("at least one USB function must be enabled")
-	}
-	return nil
+	return gadgetCfg, activeFuncs
 }
 
 func ensureBackingFile(path string, sizeMB int) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-	if err != nil {
-		if os.IsExist(err) {
+	targetSize := int64(sizeMB) * 1024 * 1024
+	if info, err := os.Stat(path); err == nil {
+		if info.Size() == targetSize && targetSize > 0 {
 			return nil
 		}
-		return err
+		_ = os.Remove(path)
 	}
-	defer f.Close()
 
-	if err := f.Truncate(int64(sizeMB) * 1024 * 1024); err != nil {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
 		return err
 	}
+
+	if err := f.Truncate(targetSize); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return err
+	}
+	_ = f.Close()
 
 	mkfsPath, err := exec.LookPath("mkfs.vfat")
 	if err != nil {
 		if _, statErr := os.Stat("/usr/sbin/mkfs.vfat"); statErr == nil {
 			mkfsPath = "/usr/sbin/mkfs.vfat"
 		} else {
+			_ = os.Remove(path)
 			return fmt.Errorf("mkfs.vfat executable not found: %w", err)
 		}
 	}
 	cmd := exec.Command(mkfsPath, path)
 	if err := cmd.Run(); err != nil {
+		_ = os.Remove(path)
 		return fmt.Errorf("formatting disk image with %s: %w", mkfsPath, err)
 	}
 	return nil

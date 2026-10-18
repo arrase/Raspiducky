@@ -3,8 +3,8 @@ package hid
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"unicode"
+	"unicode/utf8"
 )
 
 // KeyCombo represents a modifier bitmask and a main keycode.
@@ -15,31 +15,8 @@ type KeyCombo struct {
 
 // Layout defines mapping rules for translating runes and key names into HID reports.
 type Layout struct {
-	Name     string
-	Runes    map[rune][]KeyboardReport
-	KeyNames map[string]KeyCombo
-}
-
-// Clone creates a deep copy of the Layout to prevent data races when accessed concurrently.
-func (l *Layout) Clone() *Layout {
-	if l == nil {
-		return nil
-	}
-	newRunes := make(map[rune][]KeyboardReport, len(l.Runes))
-	for k, v := range l.Runes {
-		reportsCopy := make([]KeyboardReport, len(v))
-		copy(reportsCopy, v)
-		newRunes[k] = reportsCopy
-	}
-	newKeyNames := make(map[string]KeyCombo, len(l.KeyNames))
-	for k, v := range l.KeyNames {
-		newKeyNames[k] = v
-	}
-	return &Layout{
-		Name:     l.Name,
-		Runes:    newRunes,
-		KeyNames: newKeyNames,
-	}
+	Name  string
+	Runes map[rune]KeyboardReport
 }
 
 var commonKeyNames = map[string]KeyCombo{
@@ -104,14 +81,9 @@ var commonKeyNames = map[string]KeyCombo{
 	"F12":         {Modifiers: 0, KeyCode: KeyF12},
 }
 
-var (
-	layoutsMu sync.RWMutex
-	layouts   = map[string]*Layout{}
-)
+var layouts = map[string]*Layout{}
 
 func init() {
-	layoutsMu.Lock()
-	defer layoutsMu.Unlock()
 	layouts["US"] = buildUSLayout()
 	layouts["DE"] = buildDELayout()
 	layouts["ES"] = buildESLayout()
@@ -121,36 +93,30 @@ func init() {
 // GetLayout returns the Layout struct for the given layout name ("us", "de", "es", "fr").
 func GetLayout(name string) (*Layout, error) {
 	upper := strings.ToUpper(strings.TrimSpace(name))
-	layoutsMu.RLock()
-	l, ok := layouts[upper]
-	layoutsMu.RUnlock()
-	if ok {
-		return l.Clone(), nil
+	if l, ok := layouts[upper]; ok {
+		return l, nil
 	}
 	return nil, fmt.Errorf("unsupported layout: %s", name)
 }
 
-// MapRune returns the sequence of KeyboardReports to produce the given rune in this layout.
-func (l *Layout) MapRune(r rune) ([]KeyboardReport, bool) {
-	reports, ok := l.Runes[r]
-	return reports, ok
-}
-
 // MapKeyName resolves a key name (e.g. "CTRL", "GUI", "a", "ENTER", "F4") to a KeyCombo in this layout.
 func (l *Layout) MapKeyName(name string) (KeyCombo, bool) {
-	upper := strings.ToUpper(strings.TrimSpace(name))
-	if combo, ok := l.KeyNames[upper]; ok {
-		return combo, true
-	}
+	trimmed := strings.TrimSpace(name)
+	upper := strings.ToUpper(trimmed)
 	if combo, ok := commonKeyNames[upper]; ok {
 		return combo, true
 	}
 
-	// Single letter or digit check
-	if len(upper) == 1 {
-		r := rune(upper[0])
-		if reports, ok := l.Runes[unicode.ToLower(r)]; ok && len(reports) > 0 {
-			return KeyCombo{Modifiers: reports[0].Modifiers(), KeyCode: reports[0].KeyCodes()[0]}, true
+	if utf8.RuneCountInString(trimmed) == 1 {
+		r, _ := utf8.DecodeRuneInString(trimmed)
+		report, ok := l.Runes[unicode.ToLower(r)]
+		if !ok {
+			report, ok = l.Runes[r]
+		}
+		if ok {
+			if kcs := report.KeyCodes(); len(kcs) > 0 {
+				return KeyCombo{Modifiers: report[0], KeyCode: kcs[0]}, true
+			}
 		}
 	}
 
@@ -158,266 +124,246 @@ func (l *Layout) MapKeyName(name string) (KeyCombo, bool) {
 }
 
 func buildUSLayout() *Layout {
-	rMap := make(map[rune][]KeyboardReport)
+	rMap := make(map[rune]KeyboardReport)
 
 	// Letters a-z
 	for c := 'a'; c <= 'z'; c++ {
 		key := uint8(KeyA + uint8(c-'a'))
-		rMap[c] = []KeyboardReport{NewKeyboardReport(0, key)}
-		rMap[unicode.ToUpper(c)] = []KeyboardReport{NewKeyboardReport(ModLeftShift, key)}
+		rMap[c] = NewKeyboardReport(0, key)
+		rMap[unicode.ToUpper(c)] = NewKeyboardReport(ModLeftShift, key)
 	}
 
 	// Digits 0-9
-	rMap['1'] = []KeyboardReport{NewKeyboardReport(0, Key1)}
-	rMap['2'] = []KeyboardReport{NewKeyboardReport(0, Key2)}
-	rMap['3'] = []KeyboardReport{NewKeyboardReport(0, Key3)}
-	rMap['4'] = []KeyboardReport{NewKeyboardReport(0, Key4)}
-	rMap['5'] = []KeyboardReport{NewKeyboardReport(0, Key5)}
-	rMap['6'] = []KeyboardReport{NewKeyboardReport(0, Key6)}
-	rMap['7'] = []KeyboardReport{NewKeyboardReport(0, Key7)}
-	rMap['8'] = []KeyboardReport{NewKeyboardReport(0, Key8)}
-	rMap['9'] = []KeyboardReport{NewKeyboardReport(0, Key9)}
-	rMap['0'] = []KeyboardReport{NewKeyboardReport(0, Key0)}
+	rMap['1'] = NewKeyboardReport(0, Key1)
+	rMap['2'] = NewKeyboardReport(0, Key2)
+	rMap['3'] = NewKeyboardReport(0, Key3)
+	rMap['4'] = NewKeyboardReport(0, Key4)
+	rMap['5'] = NewKeyboardReport(0, Key5)
+	rMap['6'] = NewKeyboardReport(0, Key6)
+	rMap['7'] = NewKeyboardReport(0, Key7)
+	rMap['8'] = NewKeyboardReport(0, Key8)
+	rMap['9'] = NewKeyboardReport(0, Key9)
+	rMap['0'] = NewKeyboardReport(0, Key0)
 
 	// Shifted digits
-	rMap['!'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key1)}
-	rMap['@'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key2)}
-	rMap['#'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key3)}
-	rMap['$'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key4)}
-	rMap['%'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key5)}
-	rMap['^'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key6)}
-	rMap['&'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key7)}
-	rMap['*'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key8)}
-	rMap['('] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key9)}
-	rMap[')'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key0)}
+	rMap['!'] = NewKeyboardReport(ModLeftShift, Key1)
+	rMap['@'] = NewKeyboardReport(ModLeftShift, Key2)
+	rMap['#'] = NewKeyboardReport(ModLeftShift, Key3)
+	rMap['$'] = NewKeyboardReport(ModLeftShift, Key4)
+	rMap['%'] = NewKeyboardReport(ModLeftShift, Key5)
+	rMap['^'] = NewKeyboardReport(ModLeftShift, Key6)
+	rMap['&'] = NewKeyboardReport(ModLeftShift, Key7)
+	rMap['*'] = NewKeyboardReport(ModLeftShift, Key8)
+	rMap['('] = NewKeyboardReport(ModLeftShift, Key9)
+	rMap[')'] = NewKeyboardReport(ModLeftShift, Key0)
 
 	// Whitespace
-	rMap['\n'] = []KeyboardReport{NewKeyboardReport(0, KeyEnter)}
-	rMap['\r'] = []KeyboardReport{NewKeyboardReport(0, KeyEnter)}
-	rMap['\t'] = []KeyboardReport{NewKeyboardReport(0, KeyTab)}
-	rMap[' '] = []KeyboardReport{NewKeyboardReport(0, KeySpace)}
+	rMap['\n'] = NewKeyboardReport(0, KeyEnter)
+	rMap['\r'] = NewKeyboardReport(0, KeyEnter)
+	rMap['\t'] = NewKeyboardReport(0, KeyTab)
+	rMap[' '] = NewKeyboardReport(0, KeySpace)
 
 	// Punctuations & Symbols
-	rMap['-'] = []KeyboardReport{NewKeyboardReport(0, KeyMinus)}
-	rMap['_'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyMinus)}
-	rMap['='] = []KeyboardReport{NewKeyboardReport(0, KeyEqual)}
-	rMap['+'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyEqual)}
-	rMap['['] = []KeyboardReport{NewKeyboardReport(0, KeyLeftBrace)}
-	rMap['{'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyLeftBrace)}
-	rMap[']'] = []KeyboardReport{NewKeyboardReport(0, KeyRightBrace)}
-	rMap['}'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyRightBrace)}
-	rMap['\\'] = []KeyboardReport{NewKeyboardReport(0, KeyBackslash)}
-	rMap['|'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyBackslash)}
-	rMap[';'] = []KeyboardReport{NewKeyboardReport(0, KeySemicolon)}
-	rMap[':'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySemicolon)}
-	rMap['\''] = []KeyboardReport{NewKeyboardReport(0, KeyApostrophe)}
-	rMap['"'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyApostrophe)}
-	rMap['`'] = []KeyboardReport{NewKeyboardReport(0, KeyGrave)}
-	rMap['~'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyGrave)}
-	rMap[','] = []KeyboardReport{NewKeyboardReport(0, KeyComma)}
-	rMap['<'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyComma)}
-	rMap['.'] = []KeyboardReport{NewKeyboardReport(0, KeyDot)}
-	rMap['>'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyDot)}
-	rMap['/'] = []KeyboardReport{NewKeyboardReport(0, KeySlash)}
-	rMap['?'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySlash)}
+	rMap['-'] = NewKeyboardReport(0, KeyMinus)
+	rMap['_'] = NewKeyboardReport(ModLeftShift, KeyMinus)
+	rMap['='] = NewKeyboardReport(0, KeyEqual)
+	rMap['+'] = NewKeyboardReport(ModLeftShift, KeyEqual)
+	rMap['['] = NewKeyboardReport(0, KeyLeftBrace)
+	rMap['{'] = NewKeyboardReport(ModLeftShift, KeyLeftBrace)
+	rMap[']'] = NewKeyboardReport(0, KeyRightBrace)
+	rMap['}'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
+	rMap['\\'] = NewKeyboardReport(0, KeyBackslash)
+	rMap['|'] = NewKeyboardReport(ModLeftShift, KeyBackslash)
+	rMap[';'] = NewKeyboardReport(0, KeySemicolon)
+	rMap[':'] = NewKeyboardReport(ModLeftShift, KeySemicolon)
+	rMap['\''] = NewKeyboardReport(0, KeyApostrophe)
+	rMap['"'] = NewKeyboardReport(ModLeftShift, KeyApostrophe)
+	rMap['`'] = NewKeyboardReport(0, KeyGrave)
+	rMap['~'] = NewKeyboardReport(ModLeftShift, KeyGrave)
+	rMap[','] = NewKeyboardReport(0, KeyComma)
+	rMap['<'] = NewKeyboardReport(ModLeftShift, KeyComma)
+	rMap['.'] = NewKeyboardReport(0, KeyDot)
+	rMap['>'] = NewKeyboardReport(ModLeftShift, KeyDot)
+	rMap['/'] = NewKeyboardReport(0, KeySlash)
+	rMap['?'] = NewKeyboardReport(ModLeftShift, KeySlash)
 
 	return &Layout{
-		Name:     "US",
-		Runes:    rMap,
-		KeyNames: make(map[string]KeyCombo),
+		Name:  "US",
+		Runes: rMap,
 	}
 }
 
 func buildDELayout() *Layout {
 	l := buildUSLayout()
 	l.Name = "DE"
-	rMap := make(map[rune][]KeyboardReport)
-	for k, v := range l.Runes {
-		rMap[k] = v
-	}
 
 	// Y and Z swap in QWERTZ
-	rMap['z'] = []KeyboardReport{NewKeyboardReport(0, KeyY)}
-	rMap['Z'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyY)}
-	rMap['y'] = []KeyboardReport{NewKeyboardReport(0, KeyZ)}
-	rMap['Y'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyZ)}
+	l.Runes['z'] = NewKeyboardReport(0, KeyY)
+	l.Runes['Z'] = NewKeyboardReport(ModLeftShift, KeyY)
+	l.Runes['y'] = NewKeyboardReport(0, KeyZ)
+	l.Runes['Y'] = NewKeyboardReport(ModLeftShift, KeyZ)
 
 	// Umlauts & German specific
-	rMap['ä'] = []KeyboardReport{NewKeyboardReport(0, KeyApostrophe)}
-	rMap['Ä'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyApostrophe)}
-	rMap['ö'] = []KeyboardReport{NewKeyboardReport(0, KeySemicolon)}
-	rMap['Ö'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySemicolon)}
-	rMap['ü'] = []KeyboardReport{NewKeyboardReport(0, KeyLeftBrace)}
-	rMap['Ü'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyLeftBrace)}
-	rMap['ß'] = []KeyboardReport{NewKeyboardReport(0, KeyMinus)}
+	l.Runes['ä'] = NewKeyboardReport(0, KeyApostrophe)
+	l.Runes['Ä'] = NewKeyboardReport(ModLeftShift, KeyApostrophe)
+	l.Runes['ö'] = NewKeyboardReport(0, KeySemicolon)
+	l.Runes['Ö'] = NewKeyboardReport(ModLeftShift, KeySemicolon)
+	l.Runes['ü'] = NewKeyboardReport(0, KeyLeftBrace)
+	l.Runes['Ü'] = NewKeyboardReport(ModLeftShift, KeyLeftBrace)
+	l.Runes['ß'] = NewKeyboardReport(0, KeyMinus)
 
 	// Symbols for DE layout
-	rMap['!'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key1)}
-	rMap['"'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key2)}
-	rMap['§'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key3)}
-	rMap['$'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key4)}
-	rMap['%'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key5)}
-	rMap['&'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key6)}
-	rMap['/'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key7)}
-	rMap['('] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key8)}
-	rMap[')'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key9)}
-	rMap['='] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key0)}
+	l.Runes['"'] = NewKeyboardReport(ModLeftShift, Key2)
+	l.Runes['§'] = NewKeyboardReport(ModLeftShift, Key3)
+	l.Runes['&'] = NewKeyboardReport(ModLeftShift, Key6)
+	l.Runes['/'] = NewKeyboardReport(ModLeftShift, Key7)
+	l.Runes['('] = NewKeyboardReport(ModLeftShift, Key8)
+	l.Runes[')'] = NewKeyboardReport(ModLeftShift, Key9)
+	l.Runes['='] = NewKeyboardReport(ModLeftShift, Key0)
 
-	rMap['?'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyEqual)}
-	rMap['+'] = []KeyboardReport{NewKeyboardReport(0, KeyRightBrace)}
-	rMap['*'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyRightBrace)}
-	rMap['~'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyRightBrace)}
-	rMap['#'] = []KeyboardReport{NewKeyboardReport(0, KeyHashtilde)}
-	rMap['\''] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyHashtilde)}
-	rMap[';'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyComma)}
-	rMap[':'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyDot)}
-	rMap['-'] = []KeyboardReport{NewKeyboardReport(0, KeySlash)}
-	rMap['_'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySlash)}
-	rMap['<'] = []KeyboardReport{NewKeyboardReport(0, KeyNonUSBackslash)}
-	rMap['>'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyNonUSBackslash)}
-	rMap['|'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyNonUSBackslash)}
-	rMap['@'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyQ)}
-	rMap['€'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyE)}
-	rMap['\\'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyMinus)}
-	rMap['['] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key8)}
-	rMap[']'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key9)}
-	rMap['{'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key7)}
-	rMap['}'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key0)}
+	l.Runes['?'] = NewKeyboardReport(ModLeftShift, KeyMinus)
+	l.Runes['+'] = NewKeyboardReport(0, KeyRightBrace)
+	l.Runes['*'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
+	l.Runes['~'] = NewKeyboardReport(ModRightAlt, KeyRightBrace)
+	l.Runes['#'] = NewKeyboardReport(0, KeyHashtilde)
+	l.Runes['\''] = NewKeyboardReport(ModLeftShift, KeyHashtilde)
+	l.Runes[';'] = NewKeyboardReport(ModLeftShift, KeyComma)
+	l.Runes[':'] = NewKeyboardReport(ModLeftShift, KeyDot)
+	l.Runes['-'] = NewKeyboardReport(0, KeySlash)
+	l.Runes['_'] = NewKeyboardReport(ModLeftShift, KeySlash)
+	l.Runes['<'] = NewKeyboardReport(0, KeyNonUSBackslash)
+	l.Runes['>'] = NewKeyboardReport(ModLeftShift, KeyNonUSBackslash)
+	l.Runes['|'] = NewKeyboardReport(ModRightAlt, KeyNonUSBackslash)
+	l.Runes['@'] = NewKeyboardReport(ModRightAlt, KeyQ)
+	l.Runes['€'] = NewKeyboardReport(ModRightAlt, KeyE)
+	l.Runes['\\'] = NewKeyboardReport(ModRightAlt, KeyMinus)
+	l.Runes['['] = NewKeyboardReport(ModRightAlt, Key8)
+	l.Runes[']'] = NewKeyboardReport(ModRightAlt, Key9)
+	l.Runes['{'] = NewKeyboardReport(ModRightAlt, Key7)
+	l.Runes['}'] = NewKeyboardReport(ModRightAlt, Key0)
 
-	l.Runes = rMap
 	return l
 }
 
 func buildESLayout() *Layout {
 	l := buildUSLayout()
 	l.Name = "ES"
-	rMap := make(map[rune][]KeyboardReport)
-	for k, v := range l.Runes {
-		rMap[k] = v
-	}
 
 	// Spanish specific
-	rMap['ñ'] = []KeyboardReport{NewKeyboardReport(0, KeySemicolon)}
-	rMap['Ñ'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySemicolon)}
-	rMap['ç'] = []KeyboardReport{NewKeyboardReport(0, KeyRightBrace)}
-	rMap['Ç'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyRightBrace)}
-	rMap['ª'] = []KeyboardReport{NewKeyboardReport(0, KeyGrave)}
-	rMap['º'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyGrave)}
+	l.Runes['ñ'] = NewKeyboardReport(0, KeySemicolon)
+	l.Runes['Ñ'] = NewKeyboardReport(ModLeftShift, KeySemicolon)
+	l.Runes['ç'] = NewKeyboardReport(0, KeyRightBrace)
+	l.Runes['Ç'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
+	l.Runes['ª'] = NewKeyboardReport(0, KeyGrave)
+	l.Runes['º'] = NewKeyboardReport(ModLeftShift, KeyGrave)
 
-	rMap['!'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key1)}
-	rMap['"'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key2)}
-	rMap['·'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key3)}
-	rMap['$'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key4)}
-	rMap['%'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key5)}
-	rMap['&'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key6)}
-	rMap['/'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key7)}
-	rMap['('] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key8)}
-	rMap[')'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key9)}
-	rMap['='] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key0)}
+	l.Runes['"'] = NewKeyboardReport(ModLeftShift, Key2)
+	l.Runes['·'] = NewKeyboardReport(ModLeftShift, Key3)
+	l.Runes['&'] = NewKeyboardReport(ModLeftShift, Key6)
+	l.Runes['/'] = NewKeyboardReport(ModLeftShift, Key7)
+	l.Runes['('] = NewKeyboardReport(ModLeftShift, Key8)
+	l.Runes[')'] = NewKeyboardReport(ModLeftShift, Key9)
+	l.Runes['='] = NewKeyboardReport(ModLeftShift, Key0)
 
-	rMap['?'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyMinus)}
-	rMap['¿'] = []KeyboardReport{NewKeyboardReport(0, KeyMinus)}
-	rMap['\''] = []KeyboardReport{NewKeyboardReport(0, KeyEqual)}
-	rMap['¡'] = []KeyboardReport{NewKeyboardReport(0, KeyEqual)}
-	rMap['+'] = []KeyboardReport{NewKeyboardReport(0, KeyLeftBrace)}
-	rMap['*'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyLeftBrace)}
-	rMap[']'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyLeftBrace)}
-	rMap['`'] = []KeyboardReport{NewKeyboardReport(0, KeyApostrophe)}
-	rMap['^'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyApostrophe)}
-	rMap['['] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyApostrophe)}
-	rMap['}'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyHashtilde)}
+	l.Runes['\''] = NewKeyboardReport(0, KeyMinus)
+	l.Runes['?'] = NewKeyboardReport(ModLeftShift, KeyMinus)
+	l.Runes['¡'] = NewKeyboardReport(0, KeyEqual)
+	l.Runes['¿'] = NewKeyboardReport(ModLeftShift, KeyEqual)
+	l.Runes['+'] = NewKeyboardReport(0, KeyLeftBrace)
+	l.Runes['*'] = NewKeyboardReport(ModLeftShift, KeyLeftBrace)
+	l.Runes[']'] = NewKeyboardReport(ModRightAlt, KeyLeftBrace)
+	l.Runes['`'] = NewKeyboardReport(0, KeyApostrophe)
+	l.Runes['^'] = NewKeyboardReport(ModLeftShift, KeyApostrophe)
+	l.Runes['['] = NewKeyboardReport(ModRightAlt, KeyLeftBrace)
+	l.Runes['{'] = NewKeyboardReport(ModRightAlt, KeyApostrophe)
+	l.Runes['}'] = NewKeyboardReport(ModRightAlt, KeyHashtilde)
+	l.Runes['|'] = NewKeyboardReport(ModRightAlt, Key1)
 
-	rMap['-'] = []KeyboardReport{NewKeyboardReport(0, KeySlash)}
-	rMap['_'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySlash)}
-	rMap[';'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyComma)}
-	rMap[':'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyDot)}
-	rMap['<'] = []KeyboardReport{NewKeyboardReport(0, KeyNonUSBackslash)}
-	rMap['>'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyNonUSBackslash)}
-	rMap['@'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key2)}
-	rMap['#'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key3)}
-	rMap['€'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyE)}
-	rMap['~'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key4)}
-	rMap['\\'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyGrave)}
+	l.Runes['-'] = NewKeyboardReport(0, KeySlash)
+	l.Runes['_'] = NewKeyboardReport(ModLeftShift, KeySlash)
+	l.Runes[';'] = NewKeyboardReport(ModLeftShift, KeyComma)
+	l.Runes[':'] = NewKeyboardReport(ModLeftShift, KeyDot)
+	l.Runes['<'] = NewKeyboardReport(0, KeyNonUSBackslash)
+	l.Runes['>'] = NewKeyboardReport(ModLeftShift, KeyNonUSBackslash)
+	l.Runes['@'] = NewKeyboardReport(ModRightAlt, Key2)
+	l.Runes['#'] = NewKeyboardReport(ModRightAlt, Key3)
+	l.Runes['€'] = NewKeyboardReport(ModRightAlt, KeyE)
+	l.Runes['~'] = NewKeyboardReport(ModRightAlt, Key4)
+	l.Runes['\\'] = NewKeyboardReport(ModRightAlt, KeyGrave)
 
-	l.Runes = rMap
 	return l
 }
 
 func buildFRLayout() *Layout {
 	l := buildUSLayout()
 	l.Name = "FR"
-	rMap := make(map[rune][]KeyboardReport)
-	for k, v := range l.Runes {
-		rMap[k] = v
-	}
 
 	// AZERTY letter swaps
-	rMap['a'] = []KeyboardReport{NewKeyboardReport(0, KeyQ)}
-	rMap['A'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyQ)}
-	rMap['z'] = []KeyboardReport{NewKeyboardReport(0, KeyW)}
-	rMap['Z'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyW)}
-	rMap['q'] = []KeyboardReport{NewKeyboardReport(0, KeyA)}
-	rMap['Q'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyA)}
-	rMap['w'] = []KeyboardReport{NewKeyboardReport(0, KeyZ)}
-	rMap['W'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyZ)}
-	rMap['m'] = []KeyboardReport{NewKeyboardReport(0, KeySemicolon)}
-	rMap['M'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySemicolon)}
+	l.Runes['a'] = NewKeyboardReport(0, KeyQ)
+	l.Runes['A'] = NewKeyboardReport(ModLeftShift, KeyQ)
+	l.Runes['z'] = NewKeyboardReport(0, KeyW)
+	l.Runes['Z'] = NewKeyboardReport(ModLeftShift, KeyW)
+	l.Runes['q'] = NewKeyboardReport(0, KeyA)
+	l.Runes['Q'] = NewKeyboardReport(ModLeftShift, KeyA)
+	l.Runes['w'] = NewKeyboardReport(0, KeyZ)
+	l.Runes['W'] = NewKeyboardReport(ModLeftShift, KeyZ)
+	l.Runes['m'] = NewKeyboardReport(0, KeySemicolon)
+	l.Runes['M'] = NewKeyboardReport(ModLeftShift, KeySemicolon)
 
 	// French digits require shift
-	rMap['1'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key1)}
-	rMap['2'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key2)}
-	rMap['3'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key3)}
-	rMap['4'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key4)}
-	rMap['5'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key5)}
-	rMap['6'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key6)}
-	rMap['7'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key7)}
-	rMap['8'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key8)}
-	rMap['9'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key9)}
-	rMap['0'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, Key0)}
+	l.Runes['1'] = NewKeyboardReport(ModLeftShift, Key1)
+	l.Runes['2'] = NewKeyboardReport(ModLeftShift, Key2)
+	l.Runes['3'] = NewKeyboardReport(ModLeftShift, Key3)
+	l.Runes['4'] = NewKeyboardReport(ModLeftShift, Key4)
+	l.Runes['5'] = NewKeyboardReport(ModLeftShift, Key5)
+	l.Runes['6'] = NewKeyboardReport(ModLeftShift, Key6)
+	l.Runes['7'] = NewKeyboardReport(ModLeftShift, Key7)
+	l.Runes['8'] = NewKeyboardReport(ModLeftShift, Key8)
+	l.Runes['9'] = NewKeyboardReport(ModLeftShift, Key9)
+	l.Runes['0'] = NewKeyboardReport(ModLeftShift, Key0)
 
 	// Unshifted number keys in FR
-	rMap['&'] = []KeyboardReport{NewKeyboardReport(0, Key1)}
-	rMap['é'] = []KeyboardReport{NewKeyboardReport(0, Key2)}
-	rMap['"'] = []KeyboardReport{NewKeyboardReport(0, Key3)}
-	rMap['\''] = []KeyboardReport{NewKeyboardReport(0, Key4)}
-	rMap['('] = []KeyboardReport{NewKeyboardReport(0, Key5)}
-	rMap['-'] = []KeyboardReport{NewKeyboardReport(0, Key6)}
-	rMap['è'] = []KeyboardReport{NewKeyboardReport(0, Key7)}
-	rMap['_'] = []KeyboardReport{NewKeyboardReport(0, Key8)}
-	rMap['ç'] = []KeyboardReport{NewKeyboardReport(0, Key9)}
-	rMap['à'] = []KeyboardReport{NewKeyboardReport(0, Key0)}
+	l.Runes['&'] = NewKeyboardReport(0, Key1)
+	l.Runes['é'] = NewKeyboardReport(0, Key2)
+	l.Runes['"'] = NewKeyboardReport(0, Key3)
+	l.Runes['\''] = NewKeyboardReport(0, Key4)
+	l.Runes['('] = NewKeyboardReport(0, Key5)
+	l.Runes['-'] = NewKeyboardReport(0, Key6)
+	l.Runes['è'] = NewKeyboardReport(0, Key7)
+	l.Runes['_'] = NewKeyboardReport(0, Key8)
+	l.Runes['ç'] = NewKeyboardReport(0, Key9)
+	l.Runes['à'] = NewKeyboardReport(0, Key0)
 
-	rMap[')'] = []KeyboardReport{NewKeyboardReport(0, KeyMinus)}
-	rMap['='] = []KeyboardReport{NewKeyboardReport(0, KeyEqual)}
-	rMap['+'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyEqual)}
-	rMap['$'] = []KeyboardReport{NewKeyboardReport(0, KeyRightBrace)}
-	rMap['£'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyRightBrace)}
-	rMap['*'] = []KeyboardReport{NewKeyboardReport(0, KeyHashtilde)}
-	rMap['µ'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyHashtilde)}
+	l.Runes[')'] = NewKeyboardReport(0, KeyMinus)
+	l.Runes['$'] = NewKeyboardReport(0, KeyRightBrace)
+	l.Runes['£'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
+	l.Runes['*'] = NewKeyboardReport(0, KeyHashtilde)
+	l.Runes['µ'] = NewKeyboardReport(ModLeftShift, KeyHashtilde)
 
-	rMap[','] = []KeyboardReport{NewKeyboardReport(0, KeyM)}
-	rMap['?'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyM)}
-	rMap[';'] = []KeyboardReport{NewKeyboardReport(0, KeyComma)}
-	rMap['.'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyComma)}
-	rMap[':'] = []KeyboardReport{NewKeyboardReport(0, KeyDot)}
-	rMap['/'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyDot)}
-	rMap['!'] = []KeyboardReport{NewKeyboardReport(0, KeySlash)}
-	rMap['§'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeySlash)}
+	l.Runes[','] = NewKeyboardReport(0, KeyM)
+	l.Runes['?'] = NewKeyboardReport(ModLeftShift, KeyM)
+	l.Runes[';'] = NewKeyboardReport(0, KeyComma)
+	l.Runes['.'] = NewKeyboardReport(ModLeftShift, KeyComma)
+	l.Runes[':'] = NewKeyboardReport(0, KeyDot)
+	l.Runes['/'] = NewKeyboardReport(ModLeftShift, KeyDot)
+	l.Runes['!'] = NewKeyboardReport(0, KeySlash)
+	l.Runes['§'] = NewKeyboardReport(ModLeftShift, KeySlash)
 
-	rMap['<'] = []KeyboardReport{NewKeyboardReport(0, KeyNonUSBackslash)}
-	rMap['>'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyNonUSBackslash)}
-	rMap['@'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key0)}
-	rMap['€'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyE)}
-	rMap['~'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, KeyN)}
-	rMap['#'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key3)}
-	rMap['{'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key4)}
-	rMap['['] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key5)}
-	rMap['|'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key6)}
-	rMap['`'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key7)}
-	rMap['\\'] = []KeyboardReport{NewKeyboardReport(ModRightAlt, Key8)}
-	rMap['ù'] = []KeyboardReport{NewKeyboardReport(0, KeyApostrophe)}
-	rMap['%'] = []KeyboardReport{NewKeyboardReport(ModLeftShift, KeyApostrophe)}
+	l.Runes['<'] = NewKeyboardReport(0, KeyNonUSBackslash)
+	l.Runes['>'] = NewKeyboardReport(ModLeftShift, KeyNonUSBackslash)
+	l.Runes['@'] = NewKeyboardReport(ModRightAlt, Key0)
+	l.Runes['€'] = NewKeyboardReport(ModRightAlt, KeyE)
+	l.Runes['~'] = NewKeyboardReport(ModRightAlt, KeyN)
+	l.Runes['#'] = NewKeyboardReport(ModRightAlt, Key3)
+	l.Runes['{'] = NewKeyboardReport(ModRightAlt, Key4)
+	l.Runes['['] = NewKeyboardReport(ModRightAlt, Key5)
+	l.Runes['|'] = NewKeyboardReport(ModRightAlt, Key6)
+	l.Runes['`'] = NewKeyboardReport(ModRightAlt, Key7)
+	l.Runes['\\'] = NewKeyboardReport(ModRightAlt, Key8)
+	l.Runes[']'] = NewKeyboardReport(ModRightAlt, KeyMinus)
+	l.Runes['}'] = NewKeyboardReport(ModRightAlt, KeyEqual)
+	l.Runes['ù'] = NewKeyboardReport(0, KeyApostrophe)
+	l.Runes['%'] = NewKeyboardReport(ModLeftShift, KeyApostrophe)
 
-	l.Runes = rMap
 	return l
 }

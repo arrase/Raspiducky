@@ -34,7 +34,12 @@ const (
 	RndisOSDescCompatID    = "RNDIS"
 	RndisOSDescSubCompatID = "5162001"
 
+	FuncKeyboard    = "hid.usb0"
+	FuncMouse       = "hid.usb1"
 	FuncMassStorage = "mass_storage.usb0"
+	FuncRNDIS       = "rndis.usb0"
+	FuncECM         = "ecm.usb0"
+	FuncACM         = "acm.usb0"
 )
 
 var (
@@ -57,32 +62,14 @@ var (
 		0x09, 0x31, 0x15, 0x00, 0x26, 0xff, 0x7f, 0x95, 0x02, 0x75, 0x10, 0x81, 0x02, 0xc0, 0xc0,
 	}
 
-	ErrGadgetNotDeployed = errors.New("gadget is not currently deployed")
-	ErrUDCNotFound       = errors.New("no UDC driver found in system")
+	ErrUDCNotFound = errors.New("no UDC driver found in system")
 )
-
-// KeyboardReportDesc returns a cloned byte slice of the standard HID keyboard report descriptor.
-func KeyboardReportDesc() []byte {
-	desc := make([]byte, len(keyboardReportDesc))
-	copy(desc, keyboardReportDesc)
-	return desc
-}
-
-// MouseReportDesc returns a cloned byte slice of the standard HID mouse report descriptor.
-func MouseReportDesc() []byte {
-	desc := make([]byte, len(mouseReportDesc))
-	copy(desc, mouseReportDesc)
-	return desc
-}
 
 type GadgetManager struct {
 	baseDir    string
-	gadgetName string
 	udcDir     string
 	debugFSDir string
 	mu         sync.Mutex
-	currentCfg Config
-	deployed   bool
 }
 
 type Option func(*GadgetManager)
@@ -90,12 +77,6 @@ type Option func(*GadgetManager)
 func WithBaseDir(dir string) Option {
 	return func(gm *GadgetManager) {
 		gm.baseDir = dir
-	}
-}
-
-func WithGadgetName(name string) Option {
-	return func(gm *GadgetManager) {
-		gm.gadgetName = name
 	}
 }
 
@@ -114,7 +95,6 @@ func WithDebugFSDir(dir string) Option {
 func NewGadgetManager(opts ...Option) *GadgetManager {
 	gm := &GadgetManager{
 		baseDir:    DefaultBaseDir,
-		gadgetName: DefaultGadgetName,
 		udcDir:     DefaultUDCDir,
 		debugFSDir: DefaultDebugFSDir,
 	}
@@ -125,7 +105,7 @@ func NewGadgetManager(opts ...Option) *GadgetManager {
 }
 
 func (gm *GadgetManager) GadgetPath() string {
-	return filepath.Join(gm.baseDir, gm.gadgetName)
+	return filepath.Join(gm.baseDir, DefaultGadgetName)
 }
 
 func (gm *GadgetManager) GetUDCName() (string, error) {
@@ -196,7 +176,7 @@ func (gm *GadgetManager) writeBaseAttributes(gadgetPath string, cfg Config) erro
 	}
 
 	for _, w := range writes {
-		if err := writeFile(filepath.Join(gadgetPath, w.relPath), []byte(w.val)); err != nil {
+		if err := os.WriteFile(filepath.Join(gadgetPath, w.relPath), []byte(w.val), 0644); err != nil {
 			return err
 		}
 	}
@@ -217,7 +197,7 @@ func (gm *GadgetManager) writeStringDescriptors(gadgetPath string, cfg Config) e
 		{"product", cfg.Product},
 	}
 	for _, w := range strWrites {
-		if err := writeFile(filepath.Join(strDir, w.name), []byte(w.val)); err != nil {
+		if err := os.WriteFile(filepath.Join(strDir, w.name), []byte(w.val), 0644); err != nil {
 			return err
 		}
 	}
@@ -230,13 +210,13 @@ func (gm *GadgetManager) setupConfigNode(gadgetPath string) (string, error) {
 	if err := os.MkdirAll(cfgStrDir, 0755); err != nil {
 		return "", fmt.Errorf("failed creating config string dir: %w", err)
 	}
-	if err := writeFile(filepath.Join(cfgStrDir, "configuration"), []byte("Config 1: Composite")); err != nil {
+	if err := os.WriteFile(filepath.Join(cfgStrDir, "configuration"), []byte("Config 1: Composite"), 0644); err != nil {
 		return "", err
 	}
-	if err := writeFile(filepath.Join(cfgDir, "MaxPower"), []byte(DefaultMaxPower)); err != nil {
+	if err := os.WriteFile(filepath.Join(cfgDir, "MaxPower"), []byte(DefaultMaxPower), 0644); err != nil {
 		return "", err
 	}
-	if err := writeFile(filepath.Join(cfgDir, "bmAttributes"), []byte(DefaultBmAttributes)); err != nil {
+	if err := os.WriteFile(filepath.Join(cfgDir, "bmAttributes"), []byte(DefaultBmAttributes), 0644); err != nil {
 		return "", err
 	}
 	return cfgDir, nil
@@ -255,12 +235,12 @@ func (gm *GadgetManager) setupGadgetFunctions(gadgetPath string, cfgDir string, 
 		}
 	}
 	if cfg.Keyboard {
-		if err := gm.setupKeyboard(gadgetPath, cfgDir); err != nil {
+		if err := gm.setupHID(gadgetPath, cfgDir, FuncKeyboard, "1", "8", keyboardReportDesc); err != nil {
 			return err
 		}
 	}
 	if cfg.Mouse {
-		if err := gm.setupMouse(gadgetPath, cfgDir); err != nil {
+		if err := gm.setupHID(gadgetPath, cfgDir, FuncMouse, "2", "6", mouseReportDesc); err != nil {
 			return err
 		}
 	}
@@ -289,7 +269,7 @@ func (gm *GadgetManager) bindUDC(ctx context.Context, gadgetPath string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		bindErr = writeFile(udcPath, []byte(udcName))
+		bindErr = os.WriteFile(udcPath, []byte(udcName), 0644)
 		if bindErr == nil {
 			return nil
 		}
@@ -314,12 +294,12 @@ func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 		return err
 	}
 
+	gadgetPath := gm.GadgetPath()
 	// Always teardown any active gadget before deploying new configuration
-	if err := gm.destroyGadgetUnlocked(ctx); err != nil {
+	if err := gm.destroyGadgetUnlocked(gadgetPath); err != nil {
 		return fmt.Errorf("failed tearing down old gadget: %w", err)
 	}
 
-	gadgetPath := gm.GadgetPath()
 	if err := os.MkdirAll(gadgetPath, 0755); err != nil {
 		return fmt.Errorf("failed creating gadget directory %s: %w", gadgetPath, err)
 	}
@@ -341,13 +321,7 @@ func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	if err := gm.bindUDC(ctx, gadgetPath); err != nil {
-		return err
-	}
-
-	gm.currentCfg = cfg
-	gm.deployed = true
-	return nil
+	return gm.bindUDC(ctx, gadgetPath)
 }
 
 func (gm *GadgetManager) setupHID(gadgetPath, cfgDir, name, protocol, reportLen string, reportDesc []byte) error {
@@ -355,27 +329,19 @@ func (gm *GadgetManager) setupHID(gadgetPath, cfgDir, name, protocol, reportLen 
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
 		return fmt.Errorf("failed creating %s function: %w", name, err)
 	}
-	if err := writeFile(filepath.Join(funcDir, "protocol"), []byte(protocol)); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "protocol"), []byte(protocol), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(funcDir, "subclass"), []byte("1")); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "subclass"), []byte("1"), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(funcDir, "report_length"), []byte(reportLen)); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "report_length"), []byte(reportLen), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(funcDir, "report_desc"), reportDesc); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "report_desc"), reportDesc, 0644); err != nil {
 		return err
 	}
 	return os.Symlink(funcDir, filepath.Join(cfgDir, name))
-}
-
-func (gm *GadgetManager) setupKeyboard(gadgetPath, cfgDir string) error {
-	return gm.setupHID(gadgetPath, cfgDir, "hid.usb0", "1", "8", KeyboardReportDesc())
-}
-
-func (gm *GadgetManager) setupMouse(gadgetPath, cfgDir string) error {
-	return gm.setupHID(gadgetPath, cfgDir, "hid.usb1", "2", "6", MouseReportDesc())
 }
 
 func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStorageConfig) error {
@@ -384,7 +350,7 @@ func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStor
 	if err := os.MkdirAll(lunDir, 0755); err != nil {
 		return fmt.Errorf("failed creating %s lun.0: %w", FuncMassStorage, err)
 	}
-	if err := writeFile(filepath.Join(funcDir, "stall"), []byte("1")); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "stall"), []byte("1"), 0644); err != nil {
 		return err
 	}
 	cdromVal := "0"
@@ -396,33 +362,33 @@ func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStor
 		roVal = "1"
 	}
 
-	if err := writeFile(filepath.Join(lunDir, "cdrom"), []byte(cdromVal)); err != nil {
+	if err := os.WriteFile(filepath.Join(lunDir, "cdrom"), []byte(cdromVal), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(lunDir, "ro"), []byte(roVal)); err != nil {
+	if err := os.WriteFile(filepath.Join(lunDir, "ro"), []byte(roVal), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(lunDir, "removable"), []byte("1")); err != nil {
+	if err := os.WriteFile(filepath.Join(lunDir, "removable"), []byte("1"), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(lunDir, "nofua"), []byte("0")); err != nil {
+	if err := os.WriteFile(filepath.Join(lunDir, "nofua"), []byte("0"), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(lunDir, "file"), []byte(ms.BackingFile)); err != nil {
+	if err := os.WriteFile(filepath.Join(lunDir, "file"), []byte(ms.BackingFile), 0644); err != nil {
 		return err
 	}
 	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncMassStorage))
 }
 
 func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetConfig) error {
-	funcDir := filepath.Join(gadgetPath, "functions", "rndis.usb0")
+	funcDir := filepath.Join(gadgetPath, "functions", FuncRNDIS)
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
-		return fmt.Errorf("failed creating rndis.usb0 function: %w", err)
+		return fmt.Errorf("failed creating %s function: %w", FuncRNDIS, err)
 	}
-	if err := writeFile(filepath.Join(funcDir, "host_addr"), []byte(rndis.HostAddr)); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "host_addr"), []byte(rndis.HostAddr), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(funcDir, "dev_addr"), []byte(rndis.DevAddr)); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "dev_addr"), []byte(rndis.DevAddr), 0644); err != nil {
 		return err
 	}
 
@@ -431,13 +397,13 @@ func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetCon
 	if err := os.MkdirAll(osDescDir, 0755); err != nil {
 		return fmt.Errorf("failed creating os_desc dir: %w", err)
 	}
-	if err := writeFile(filepath.Join(osDescDir, "use"), []byte(RndisOSDescUse)); err != nil {
+	if err := os.WriteFile(filepath.Join(osDescDir, "use"), []byte(RndisOSDescUse), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(osDescDir, "b_vendor_code"), []byte(RndisOSDescVendorCode)); err != nil {
+	if err := os.WriteFile(filepath.Join(osDescDir, "b_vendor_code"), []byte(RndisOSDescVendorCode), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(osDescDir, "qw_sign"), []byte(RndisOSDescQWSign)); err != nil {
+	if err := os.WriteFile(filepath.Join(osDescDir, "qw_sign"), []byte(RndisOSDescQWSign), 0644); err != nil {
 		return err
 	}
 
@@ -445,10 +411,10 @@ func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetCon
 	if err := os.MkdirAll(ifaceDir, 0755); err != nil {
 		return fmt.Errorf("failed creating rndis os_desc interface: %w", err)
 	}
-	if err := writeFile(filepath.Join(ifaceDir, "compatible_id"), []byte(RndisOSDescCompatID)); err != nil {
+	if err := os.WriteFile(filepath.Join(ifaceDir, "compatible_id"), []byte(RndisOSDescCompatID), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(ifaceDir, "sub_compatible_id"), []byte(RndisOSDescSubCompatID)); err != nil {
+	if err := os.WriteFile(filepath.Join(ifaceDir, "sub_compatible_id"), []byte(RndisOSDescSubCompatID), 0644); err != nil {
 		return err
 	}
 
@@ -456,173 +422,103 @@ func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetCon
 		return fmt.Errorf("failed symlinking config to os_desc: %w", err)
 	}
 
-	return os.Symlink(funcDir, filepath.Join(cfgDir, "rndis.usb0"))
+	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncRNDIS))
 }
 
 func (gm *GadgetManager) setupECM(gadgetPath, cfgDir string, ecm EthernetConfig) error {
-	funcDir := filepath.Join(gadgetPath, "functions", "ecm.usb0")
+	funcDir := filepath.Join(gadgetPath, "functions", FuncECM)
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
-		return fmt.Errorf("failed creating ecm.usb0 function: %w", err)
+		return fmt.Errorf("failed creating %s function: %w", FuncECM, err)
 	}
-	if err := writeFile(filepath.Join(funcDir, "host_addr"), []byte(ecm.HostAddr)); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "host_addr"), []byte(ecm.HostAddr), 0644); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(funcDir, "dev_addr"), []byte(ecm.DevAddr)); err != nil {
+	if err := os.WriteFile(filepath.Join(funcDir, "dev_addr"), []byte(ecm.DevAddr), 0644); err != nil {
 		return err
 	}
-	return os.Symlink(funcDir, filepath.Join(cfgDir, "ecm.usb0"))
+	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncECM))
 }
 
 func (gm *GadgetManager) setupACM(gadgetPath, cfgDir string) error {
-	funcDir := filepath.Join(gadgetPath, "functions", "acm.usb0")
+	funcDir := filepath.Join(gadgetPath, "functions", FuncACM)
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
-		return fmt.Errorf("failed creating acm.usb0 function: %w", err)
+		return fmt.Errorf("failed creating %s function: %w", FuncACM, err)
 	}
-	return os.Symlink(funcDir, filepath.Join(cfgDir, "acm.usb0"))
+	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncACM))
 }
 
-func (gm *GadgetManager) SetMassStorageFile(ctx context.Context, backingFile string, cdrom bool) error {
-	gm.mu.Lock()
-	defer gm.mu.Unlock()
-
-	if !gm.deployed {
-		return ErrGadgetNotDeployed
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	lunDir := filepath.Join(gm.GadgetPath(), "functions", FuncMassStorage, "lun.0")
-	if _, err := os.Stat(lunDir); os.IsNotExist(err) {
-		return errors.New("mass storage function is not configured")
-	}
-
-	cdromVal := "0"
-	roVal := "0"
-	if cdrom {
-		cdromVal = "1"
-		roVal = "1"
-	}
-	if err := writeFile(filepath.Join(lunDir, "cdrom"), []byte(cdromVal)); err != nil {
-		return err
-	}
-	if err := writeFile(filepath.Join(lunDir, "ro"), []byte(roVal)); err != nil {
-		return err
-	}
-	if err := writeFile(filepath.Join(lunDir, "file"), []byte(backingFile)); err != nil {
-		return err
-	}
-
-	gm.currentCfg.MassStorage.BackingFile = backingFile
-	gm.currentCfg.MassStorage.CDROM = cdrom
-	return nil
-}
-
-func (gm *GadgetManager) DestroyGadget(ctx context.Context) error {
-	gm.mu.Lock()
-	defer gm.mu.Unlock()
-	return gm.destroyGadgetUnlocked(ctx)
-}
-
-func (gm *GadgetManager) unbindUDC() error {
-	udcPath := filepath.Join(gm.GadgetPath(), "UDC")
-	data, err := os.ReadFile(udcPath)
+func removeSymlinks(dir string) error {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
 	}
-	if len(data) > 1 {
-		if err := writeFile(udcPath, []byte("\n")); err != nil {
-			return err
-		}
-		// Allow kernel time to fully release the USB device controller
-		time.Sleep(500 * time.Millisecond)
-	}
-	return nil
-}
-
-// removeConfigfsPath recursively cleans up Linux kernel configfs directories and symlinks.
-// Regular files in configfs are attribute files managed by the kernel and cannot be unlinked directly;
-// they are automatically cleaned up when their enclosing directory is rmdir'd.
-func removeConfigfsPath(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	if info.Mode()&os.ModeSymlink != 0 {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}
-
-	if !info.IsDir() {
-		return nil
-	}
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	var errs []error
 	for _, entry := range entries {
-		childPath := filepath.Join(path, entry.Name())
-		if err := removeConfigfsPath(childPath); err != nil {
-			errs = append(errs, err)
+		if entry.Type()&os.ModeSymlink != 0 {
+			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !os.IsNotExist(err) {
+				return err
+			}
 		}
 	}
-
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, err)
-	}
-
-	return errors.Join(errs...)
+	return nil
 }
 
-func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
+func removeConfigfsDir(dir string) error {
+	if err := os.Remove(dir); err == nil || os.IsNotExist(err) {
+		return nil
 	}
+	return os.RemoveAll(dir)
+}
 
-	gadgetPath := gm.GadgetPath()
+func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
 	if _, err := os.Stat(gadgetPath); os.IsNotExist(err) {
-		gm.deployed = false
 		return nil
 	}
 
-	var errs []error
-
-	// Step 1: Unbind UDC
-	if err := gm.unbindUDC(); err != nil {
-		errs = append(errs, err)
+	// 1. Unbind UDC
+	udcPath := filepath.Join(gadgetPath, "UDC")
+	if _, err := os.Stat(udcPath); err == nil {
+		if err := os.WriteFile(udcPath, []byte(""), 0644); err != nil {
+			return err
+		}
 	}
 
-	// Step 2: Remove entire configfs hierarchy using removeConfigfsPath
-	if err := removeConfigfsPath(gadgetPath); err != nil {
-		errs = append(errs, err)
+	// 2. Remove symlinks in os_desc (os_desc/c.1 must be unlinked before configs/c.1 is removed)
+	if err := removeSymlinks(filepath.Join(gadgetPath, "os_desc")); err != nil {
+		return err
 	}
 
-	gm.deployed = false
-	gm.currentCfg = Config{}
-	return errors.Join(errs...)
-}
+	// 3. Remove function symlinks in configs/c.1
+	cfgDir := filepath.Join(gadgetPath, "configs", "c.1")
+	if err := removeSymlinks(cfgDir); err != nil {
+		return err
+	}
 
-func (gm *GadgetManager) State() (Config, bool) {
-	gm.mu.Lock()
-	defer gm.mu.Unlock()
-	return gm.currentCfg, gm.deployed
-}
+	// 4. Remove configs/c.1/strings/0x409 and configs/c.1
+	if err := removeConfigfsDir(filepath.Join(cfgDir, "strings", "0x409")); err != nil {
+		return err
+	}
+	if err := removeConfigfsDir(cfgDir); err != nil {
+		return err
+	}
 
-func writeFile(path string, data []byte) error {
-	return os.WriteFile(path, data, 0644)
+	// 5. Remove each function directory inside functions/
+	functionsDir := filepath.Join(gadgetPath, "functions")
+	if entries, err := os.ReadDir(functionsDir); err == nil {
+		for _, entry := range entries {
+			if err := removeConfigfsDir(filepath.Join(functionsDir, entry.Name())); err != nil {
+				return err
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	// 6. Remove strings/0x409 and gadgetPath
+	if err := removeConfigfsDir(filepath.Join(gadgetPath, "strings", "0x409")); err != nil {
+		return err
+	}
+	return removeConfigfsDir(gadgetPath)
 }

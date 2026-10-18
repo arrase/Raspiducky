@@ -56,13 +56,6 @@ type JobStatus struct {
 	Error      string     `json:"error,omitempty"`
 }
 
-// LEDState represents keyboard lock LED indicators.
-type LEDState struct {
-	NumLock    bool `json:"numLock"`
-	CapsLock   bool `json:"capsLock"`
-	ScrollLock bool `json:"scrollLock"`
-}
-
 // WSMessage format for broadcasting real-time events to connected clients.
 type WSMessage struct {
 	Type    string `json:"type"` // "log", "led_state", "gadget_status", "job_status"

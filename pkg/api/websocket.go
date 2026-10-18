@@ -3,10 +3,12 @@ package api
 import (
 	"log"
 	"net/http"
-	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+const wsWriteTimeout = 5 * time.Second
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -20,7 +22,6 @@ type Hub struct {
 	broadcast  chan WSMessage
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
-	mu         sync.RWMutex
 }
 
 // NewHub creates a new WebSocket hub.
@@ -38,37 +39,24 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.mu.Lock()
 			h.clients[client] = true
-			h.mu.Unlock()
 			log.Printf("[WebSocket] Client connected (%s)", client.RemoteAddr())
 
 		case client := <-h.unregister:
-			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				client.Close()
 				log.Printf("[WebSocket] Client disconnected (%s)", client.RemoteAddr())
 			}
-			h.mu.Unlock()
 
 		case msg := <-h.broadcast:
-			h.mu.RLock()
-			var deadClients []*websocket.Conn
 			for client := range h.clients {
+				_ = client.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 				if err := client.WriteJSON(msg); err != nil {
 					log.Printf("[WebSocket] Error writing to client %s: %v", client.RemoteAddr(), err)
 					client.Close()
-					deadClients = append(deadClients, client)
+					delete(h.clients, client)
 				}
-			}
-			h.mu.RUnlock()
-			if len(deadClients) > 0 {
-				h.mu.Lock()
-				for _, c := range deadClients {
-					delete(h.clients, c)
-				}
-				h.mu.Unlock()
 			}
 		}
 	}
@@ -110,13 +98,4 @@ func (h *Hub) Register(conn *websocket.Conn) {
 			}
 		}
 	}()
-}
-
-// HandleWS handles WebSocket handshake, upgrades HTTP connection, and registers it.
-func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.Upgrade(w, r)
-	if err != nil {
-		return
-	}
-	h.Register(conn)
 }

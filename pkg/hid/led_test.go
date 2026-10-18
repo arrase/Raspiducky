@@ -3,6 +3,8 @@ package hid
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -11,10 +13,8 @@ func TestLEDWatcher_GetStateAndSubscribe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	watcher, err := NewLEDWatcher(ctx, "")
-	if err != nil {
-		t.Fatalf("Failed to create LEDWatcher: %v", err)
-	}
+	watcher := NewLEDWatcher(ctx, "")
+	defer watcher.Close()
 
 	initialState := watcher.GetState()
 	if initialState.CapsLock || initialState.NumLock || initialState.ScrollLock {
@@ -45,21 +45,18 @@ func TestLEDWatcher_GetStateAndSubscribe(t *testing.T) {
 	}
 }
 
-func TestLEDWatcher_SetReader(t *testing.T) {
+func TestLEDWatcher_SetReader_MultipleReaders(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	watcher, err := NewLEDWatcher(ctx, "")
-	if err != nil {
-		t.Fatalf("Failed to create LEDWatcher: %v", err)
-	}
+	watcher := NewLEDWatcher(ctx, "")
+	defer watcher.Close()
 
 	ch, unsubscribe := watcher.Subscribe()
 	defer unsubscribe()
 
-	buf := []byte{LEDCapsLock | LEDNumLock, 0, 0, 0, 0, 0, 0, 0}
-	r := bytes.NewReader(buf)
-	watcher.SetReader(r)
+	// First custom reader
+	watcher.SetReader(bytes.NewReader([]byte{LEDCapsLock | LEDNumLock}))
 
 	select {
 	case state := <-ch:
@@ -67,6 +64,104 @@ func TestLEDWatcher_SetReader(t *testing.T) {
 			t.Errorf("Expected CapsLock and NumLock to be true, got %+v", state)
 		}
 	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for LED state update via reader")
+		t.Fatal("Timeout waiting for first LED state update via reader")
+	}
+
+	// Wait briefly for first reader to hit EOF and clear itself
+	time.Sleep(50 * time.Millisecond)
+
+	// Second custom reader should still be processed by readLoop
+	watcher.SetReader(bytes.NewReader([]byte{LEDScrollLock}))
+
+	select {
+	case state := <-ch:
+		if !state.ScrollLock || state.CapsLock || state.NumLock {
+			t.Errorf("Expected only ScrollLock to be true, got %+v", state)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for second LED state update via reader")
+	}
+}
+
+func TestLEDWatcher_WaitLED_TransitionsAndStop(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher := NewLEDWatcher(ctx, "")
+
+	// Turn CapsLock ON
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		watcher.UpdateState(LEDCapsLock)
+	}()
+
+	state, err := watcher.WaitLED(ctx, LEDCapsLock, 500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitLED ON failed: %v", err)
+	}
+	if !state.CapsLock {
+		t.Errorf("Expected CapsLock ON, got %+v", state)
+	}
+
+	// Turning CapsLock OFF should also notify a listener waiting on LEDCapsLock
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		watcher.UpdateState(0)
+	}()
+
+	state, err = watcher.WaitLED(ctx, LEDCapsLock, 500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitLED OFF failed: %v", err)
+	}
+	if state.CapsLock {
+		t.Errorf("Expected CapsLock OFF, got %+v", state)
+	}
+
+	// Closing watcher while WaitLED is blocked should unblock immediately with error
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		_ = watcher.Close()
+	}()
+
+	_, err = watcher.WaitLED(ctx, LEDNumLock, 2*time.Second)
+	if err == nil {
+		t.Fatal("Expected error when watcher is closed during WaitLED")
+	}
+}
+
+func TestLEDWatcher_DeviceFileClose(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "hidg0")
+	if err := os.WriteFile(tmpFile, []byte{LEDNumLock}, 0644); err != nil {
+		t.Fatalf("Failed to create temp device file: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher := NewLEDWatcher(ctx, tmpFile)
+	time.Sleep(50 * time.Millisecond)
+
+	if !watcher.GetState().NumLock {
+		t.Errorf("Expected NumLock to be read from device file")
+	}
+
+	if err := watcher.Close(); err != nil {
+		t.Errorf("Unexpected error closing watcher: %v", err)
+	}
+}
+
+func TestParseLEDMask(t *testing.T) {
+	mask, err := ParseLEDMask("CAPS")
+	if err != nil || mask != LEDCapsLock {
+		t.Errorf("Expected LEDCapsLock, got %v, err=%v", mask, err)
+	}
+
+	mask, err = ParseLEDMask("NUM|SCROLL")
+	if err != nil || mask != (LEDNumLock|LEDScrollLock) {
+		t.Errorf("Expected LEDNumLock|LEDScrollLock, got %v, err=%v", mask, err)
+	}
+
+	if _, err := ParseLEDMask("INVALID"); err == nil {
+		t.Error("Expected error for invalid LED mask")
 	}
 }

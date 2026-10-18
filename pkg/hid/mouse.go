@@ -2,10 +2,8 @@ package hid
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,67 +17,26 @@ const (
 
 // Mouse provides thread-safe control over a USB HID mouse device (/dev/hidg1).
 type Mouse struct {
-	mu         sync.Mutex
-	devicePath string
-	writer     io.Writer
-	ownsWriter bool
-	buttons    uint8
+	mu      sync.Mutex
+	hw      hidWriter
+	buttons uint8
 }
 
 // NewMouse initializes a new Mouse connected to the specified device path.
-func NewMouse(devicePath string) (*Mouse, error) {
-	var writer io.Writer
-	ownsWriter := false
-	if devicePath != "" {
-		ownsWriter = true
-	}
-
+func NewMouse(devicePath string) *Mouse {
 	return &Mouse{
-		devicePath: devicePath,
-		writer:     writer,
-		ownsWriter: ownsWriter,
-	}, nil
+		hw: hidWriter{devicePath: devicePath},
+	}
 }
 
 // SetWriter overrides the output writer (useful for testing or custom pipes).
 func (m *Mouse) SetWriter(w io.Writer) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.ownsWriter && m.writer != nil {
-		if closer, ok := m.writer.(io.Closer); ok {
-			_ = closer.Close()
-		}
-	}
-	m.writer = w
-	m.ownsWriter = false
+	m.hw.setWriter(w)
 }
 
-func (m *Mouse) writeReport(report []byte) error {
-	if m.writer == nil && m.ownsWriter && m.devicePath != "" {
-		f, err := os.OpenFile(m.devicePath, os.O_WRONLY|os.O_SYNC, 0666)
-		if err != nil {
-			return fmt.Errorf("opening device %q: %w", m.devicePath, err)
-		}
-		m.writer = f
-	}
-
-	if m.writer == nil {
-		return errors.New("mouse device not connected")
-	}
-	n, err := m.writer.Write(report)
-	if err != nil {
-		if m.ownsWriter {
-			if closer, ok := m.writer.(io.Closer); ok {
-				_ = closer.Close()
-			}
-			m.writer = nil // Force reopen on next write
-		}
-		return fmt.Errorf("hid mouse write error: %w", err)
-	}
-	if n < len(report) {
-		return io.ErrShortWrite
-	}
-	return nil
+// SetDevicePath updates the target HID device path.
+func (m *Mouse) SetDevicePath(path string) {
+	m.hw.setDevicePath(path)
 }
 
 // Move performs a relative mouse displacement.
@@ -92,10 +49,8 @@ func (m *Mouse) Move(x, y int8) error {
 	report[1] = m.buttons
 	report[2] = uint8(x)
 	report[3] = uint8(y)
-	report[4] = 0
-	report[5] = 0
 
-	return m.writeReport(report[:])
+	return m.hw.writeReport(report[:])
 }
 
 // MoveTo sets an absolute mouse position (0..32767 on X and Y).
@@ -109,7 +64,7 @@ func (m *Mouse) MoveTo(x, y uint16) error {
 	binary.LittleEndian.PutUint16(report[2:4], x)
 	binary.LittleEndian.PutUint16(report[4:6], y)
 
-	return m.writeReport(report[:])
+	return m.hw.writeReport(report[:])
 }
 
 // parseButton converts a string button representation to its bitmask value.
@@ -127,8 +82,7 @@ func parseButton(b string) (uint8, error) {
 	}
 }
 
-// ButtonDown depresses a mouse button without releasing it.
-func (m *Mouse) ButtonDown(button string) error {
+func (m *Mouse) setButton(button string, down bool) error {
 	btn, err := parseButton(button)
 	if err != nil {
 		return err
@@ -137,32 +91,27 @@ func (m *Mouse) ButtonDown(button string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.buttons |= btn
+	if down {
+		m.buttons |= btn
+	} else {
+		m.buttons &^= btn
+	}
 
 	var report [6]byte
 	report[0] = 0x01
 	report[1] = m.buttons
 
-	return m.writeReport(report[:])
+	return m.hw.writeReport(report[:])
+}
+
+// ButtonDown depresses a mouse button without releasing it.
+func (m *Mouse) ButtonDown(button string) error {
+	return m.setButton(button, true)
 }
 
 // ButtonUp releases a mouse button.
 func (m *Mouse) ButtonUp(button string) error {
-	btn, err := parseButton(button)
-	if err != nil {
-		return err
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.buttons &= ^btn
-
-	var report [6]byte
-	report[0] = 0x01
-	report[1] = m.buttons
-
-	return m.writeReport(report[:])
+	return m.setButton(button, false)
 }
 
 // Click presses and releases the specified mouse button.
@@ -176,14 +125,5 @@ func (m *Mouse) Click(button string) error {
 
 // Close closes the underlying device file if owned by Mouse.
 func (m *Mouse) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.ownsWriter && m.writer != nil {
-		if closer, ok := m.writer.(io.Closer); ok {
-			err := closer.Close()
-			m.writer = nil
-			return err
-		}
-	}
-	return nil
+	return m.hw.close()
 }

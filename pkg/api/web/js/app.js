@@ -9,21 +9,14 @@ const state = {
     wsConnected: false,
     wsReconnectAttempts: 0,
     gadget: {
-        keyboard: true,
-        mouse: true,
-        storage: false,
-        ethernet: false,
-        serial: false,
-        vendorId: '0x1d6b',
-        productId: '0x0104',
-        manufacturer: 'Raspiducky Labs',
-        product: 'Raspiducky Multi-Function HID',
-        serialNumber: 'RPD-2026-0001',
-        udc: '3f980000.usb',
-        deployed: true
+        deployed: false,
+        activeFunctions: [],
+        udc: '',
+        maxEndpoints: 0,
+        config: {}
     },
     scripts: [],
-    currentJob: null,
+    lastTerminalJobId: null,
     jobStartTime: null,
     jobTimerInterval: null,
     wsReconnectTimer: null
@@ -38,16 +31,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Tab Switching
 function switchTab(tabId) {
     state.activeTab = tabId;
-    
+
     // Update nav tab buttons
     document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
-    const btn = document.getElementById(`tab-btn-${tabId}`);
-    if (btn) btn.classList.add('active');
+    document.getElementById(`tab-btn-${tabId}`).classList.add('active');
 
     // Update tab content views
     document.querySelectorAll('.tab-content').forEach(view => view.classList.remove('active'));
-    const view = document.getElementById(`view-${tabId}`);
-    if (view) view.classList.add('active');
+    document.getElementById(`view-${tabId}`).classList.add('active');
 }
 
 // WebSocket Connection Manager
@@ -115,8 +106,6 @@ function updateWSStatus(status) {
     const dot = document.getElementById('ws-status-dot');
     const text = document.getElementById('ws-status-text');
 
-    if (!dot || !text) return;
-
     if (status === 'connected') {
         dot.className = 'status-dot connected';
         text.textContent = 'Live Connected';
@@ -133,16 +122,16 @@ function updateWSStatus(status) {
 function handleWSMessage(msg) {
     switch (msg.type) {
         case 'log':
-            appendLog(msg.level || 'INFO', msg.source || 'PAYLOAD', msg.message);
+            appendLog(msg.level, msg.source, msg.message);
             break;
         case 'led_state':
-            updateLEDIndicators(msg.payload || msg);
+            updateLEDIndicators(msg.payload);
             break;
         case 'gadget_status':
-            updateGadgetUI(msg.payload || msg);
+            updateGadgetUI(msg.payload);
             break;
         case 'job_status':
-            updateJobStatusUI(msg.payload || msg);
+            updateJobStatusUI(msg.payload);
             break;
         default:
             console.log('Unhandled WS message type:', msg.type, msg);
@@ -151,13 +140,9 @@ function handleWSMessage(msg) {
 
 // LED Indicators Update
 function updateLEDIndicators(leds) {
-    const num = document.getElementById('led-num');
-    const caps = document.getElementById('led-caps');
-    const scroll = document.getElementById('led-scroll');
-
-    if (num) num.classList.toggle('active', !!leds.numLock);
-    if (caps) caps.classList.toggle('active', !!leds.capsLock);
-    if (scroll) scroll.classList.toggle('active', !!leds.scrollLock);
+    document.getElementById('led-num').classList.toggle('active', Boolean(leds.numLock));
+    document.getElementById('led-caps').classList.toggle('active', Boolean(leds.capsLock));
+    document.getElementById('led-scroll').classList.toggle('active', Boolean(leds.scrollLock));
 }
 
 // API Utility Helper
