@@ -319,7 +319,7 @@ async function saveCurrentScript() {
 
     try {
         const res = await apiCall('/api/scripts', 'POST', payload);
-        if (res && res.name) {
+        if (res?.name) {
             titleInput.value = res.name;
         }
         appendLog('INFO', 'LIBRARY', `Payload [${titleInput.value}] saved to library successfully!`);

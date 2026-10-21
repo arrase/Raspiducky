@@ -23,57 +23,10 @@ func ParseDuckyScript(duckySource string) (string, error) {
 			continue
 		}
 
-		parts := strings.SplitN(line, " ", 2)
-		cmd := strings.ToUpper(parts[0])
-		arg := ""
-		if len(parts) > 1 {
-			arg = parts[1]
-		}
-
-		switch cmd {
-		case "REM":
-			jsLines = append(jsLines, fmt.Sprintf("// %s", strings.TrimSpace(arg)))
-			continue
-
-		case "DEFAULT_DELAY", "DEFAULTDELAY":
-			fields := strings.Fields(arg)
-			if len(fields) == 0 {
-				return "", fmt.Errorf("line %d: %s requires a delay argument", lineNum, cmd)
-			}
-			delayVal, err := strconv.Atoi(fields[0])
-			if err != nil || delayVal < 0 {
-				return "", fmt.Errorf("line %d: invalid %s value %q", lineNum, cmd, fields[0])
-			}
-			defaultDelay = delayVal
-			jsLines = append(jsLines, fmt.Sprintf("// Default delay set to %d ms", delayVal))
-			continue
-
-		case "REPEAT":
-			if lastJSCommand == "" {
-				return "", fmt.Errorf("line %d: REPEAT has no preceding command to repeat", lineNum)
-			}
-			fields := strings.Fields(arg)
-			if len(fields) == 0 {
-				return "", fmt.Errorf("line %d: REPEAT requires a count argument", lineNum)
-			}
-			count, err := strconv.Atoi(fields[0])
-			if err != nil || count <= 0 {
-				return "", fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, fields[0])
-			}
-			body := lastJSCommand
-			if defaultDelay > 0 {
-				body = fmt.Sprintf("%s delay(%d);", lastJSCommand, defaultDelay)
-			}
-			jsLines = append(jsLines, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, body))
-			continue
-		}
-
-		jsCmd := translateCommandToJS(cmd, arg, line)
-		jsLines = append(jsLines, jsCmd)
-		lastJSCommand = jsCmd
-
-		if defaultDelay > 0 && !strings.HasPrefix(jsCmd, "delay(") {
-			jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
+		var err error
+		jsLines, defaultDelay, lastJSCommand, err = appendDuckyLine(jsLines, line, lineNum, defaultDelay, lastJSCommand)
+		if err != nil {
+			return "", err
 		}
 	}
 
@@ -82,6 +35,72 @@ func ParseDuckyScript(duckySource string) (string, error) {
 	}
 
 	return strings.Join(jsLines, "\n"), nil
+}
+
+func appendDuckyLine(jsLines []string, line string, lineNum, defaultDelay int, lastJSCommand string) ([]string, int, string, error) {
+	parts := strings.SplitN(line, " ", 2)
+	cmd := strings.ToUpper(parts[0])
+	arg := ""
+	if len(parts) > 1 {
+		arg = parts[1]
+	}
+
+	switch cmd {
+	case "REM":
+		return append(jsLines, fmt.Sprintf("// %s", strings.TrimSpace(arg))), defaultDelay, lastJSCommand, nil
+
+	case "DEFAULT_DELAY", "DEFAULTDELAY":
+		delayVal, err := parseDefaultDelay(lineNum, cmd, arg)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		return append(jsLines, fmt.Sprintf("// Default delay set to %d ms", delayVal)), delayVal, lastJSCommand, nil
+
+	case "REPEAT":
+		repeatJS, err := parseRepeatCommand(lineNum, arg, lastJSCommand, defaultDelay)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		return append(jsLines, repeatJS), defaultDelay, lastJSCommand, nil
+	}
+
+	jsCmd := translateCommandToJS(cmd, arg, line)
+	jsLines = append(jsLines, jsCmd)
+	if defaultDelay > 0 && !strings.HasPrefix(jsCmd, "delay(") {
+		jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
+	}
+	return jsLines, defaultDelay, jsCmd, nil
+}
+
+func parseDefaultDelay(lineNum int, cmd, arg string) (int, error) {
+	fields := strings.Fields(arg)
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("line %d: %s requires a delay argument", lineNum, cmd)
+	}
+	delayVal, err := strconv.Atoi(fields[0])
+	if err != nil || delayVal < 0 {
+		return 0, fmt.Errorf("line %d: invalid %s value %q", lineNum, cmd, fields[0])
+	}
+	return delayVal, nil
+}
+
+func parseRepeatCommand(lineNum int, arg, lastJSCommand string, defaultDelay int) (string, error) {
+	if lastJSCommand == "" {
+		return "", fmt.Errorf("line %d: REPEAT has no preceding command to repeat", lineNum)
+	}
+	fields := strings.Fields(arg)
+	if len(fields) == 0 {
+		return "", fmt.Errorf("line %d: REPEAT requires a count argument", lineNum)
+	}
+	count, err := strconv.Atoi(fields[0])
+	if err != nil || count <= 0 {
+		return "", fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, fields[0])
+	}
+	body := lastJSCommand
+	if defaultDelay > 0 {
+		body = fmt.Sprintf("%s delay(%d);", lastJSCommand, defaultDelay)
+	}
+	return fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, body), nil
 }
 
 func parseCoordinates(arg string) (int, int) {

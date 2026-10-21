@@ -122,8 +122,8 @@ code, pre, kbd, .md-typeset code {
 }
 
 /* Layout & Subtle Top Ambient Light */
-.md-grid {
-  max-width: 82rem !important;
+body .md-grid {
+  max-width: 82rem;
 }
 
 .md-main {
@@ -134,36 +134,36 @@ code, pre, kbd, .md-typeset code {
   background: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(79, 70, 229, 0.06), transparent 70%);
 }
 
-.md-content__inner {
-  padding-top: 1rem !important;
+body .md-content__inner {
+  padding-top: 1rem;
 }
 
 /* Integrated Glassmorphic Header & Navigation Tabs */
-.md-header,
-.md-tabs {
+body .md-header,
+body .md-tabs {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-subtle);
-  box-shadow: none !important;
-  color: var(--text-main) !important;
+  box-shadow: none;
+  color: var(--text-main);
 }
 
 [data-md-color-scheme="slate"] .md-header,
 [data-md-color-scheme="slate"] .md-tabs {
-  background: rgba(9, 10, 15, 0.80) !important;
+  background: rgba(9, 10, 15, 0.80);
 }
 
 [data-md-color-scheme="default"] .md-header,
 [data-md-color-scheme="default"] .md-tabs {
-  background: rgba(250, 250, 250, 0.85) !important;
+  background: rgba(250, 250, 250, 0.85);
 }
 
-.md-header__button,
-.md-header__title,
-.md-header__topic,
-.md-source,
-.md-tabs__link {
-  color: var(--text-main) !important;
+body .md-header__button,
+body .md-header__title,
+body .md-header__topic,
+body .md-source,
+body .md-tabs__link {
+  color: var(--text-main);
 }
 
 .md-tabs__link {
@@ -171,36 +171,36 @@ code, pre, kbd, .md-typeset code {
   transition: opacity 0.2s ease, color 0.2s ease;
 }
 
-.md-tabs__link--active,
-.md-tabs__link:hover {
+body .md-tabs__link--active,
+body .md-tabs__link:hover {
   opacity: 1;
-  color: var(--accent-primary) !important;
+  color: var(--accent-primary);
 }
 
-.md-nav--primary .md-nav__title,
-.md-nav--secondary .md-nav__title,
-.md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link {
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--text-muted) !important;
+body .md-nav--primary .md-nav__title,
+body .md-nav--secondary .md-nav__title,
+body .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.md-nav__item .md-nav__link--active {
-  color: var(--accent-primary) !important;
+body .md-nav__item .md-nav__link--active {
+  color: var(--accent-primary);
   font-weight: 600;
 }
 
-.md-footer-meta {
-  background: var(--bg-canvas) !important;
+body .md-footer-meta {
+  background: var(--bg-canvas);
   border-top: 1px solid var(--border-subtle);
 }
 
 /* Return to Portal Button (Injected on Subprojects) */
-.arrase-portal-link {
+body .arrase-portal-link {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -209,20 +209,20 @@ code, pre, kbd, .md-typeset code {
   border-radius: 6px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
-  color: var(--text-main) !important;
+  color: var(--text-main);
   font-size: 0.78rem;
   font-weight: 500;
   line-height: 1.4;
-  text-decoration: none !important;
+  text-decoration: none;
   white-space: nowrap;
   transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
-.arrase-portal-link:hover {
+body .arrase-portal-link:hover {
   border-color: var(--border-hover);
   background: var(--bg-surface-hover);
   transform: translateX(-1px);
-  color: var(--accent-primary) !important;
+  color: var(--accent-primary);
 }
 
 .arrase-portal-link i {
@@ -232,29 +232,29 @@ code, pre, kbd, .md-typeset code {
 
 /* Search Bar — Hidden only on Root Portal, Styled Cleanly on Subprojects */
 body[data-arrase-portal="true"] .md-search {
-  display: none !important;
+  display: none;
 }
 
-.md-search__form {
-  background-color: var(--bg-surface) !important;
+body .md-search__form {
+  background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px !important;
+  border-radius: 6px;
   color: var(--text-main);
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.md-search__form:hover {
+body .md-search__form:hover {
   border-color: var(--border-hover);
 }
 
-.md-search__input {
-  color: var(--text-main) !important;
+body .md-search__input {
+  color: var(--text-main);
   font-size: 0.82rem;
 }
 
-.md-search__input::placeholder,
-.md-search__icon {
-  color: var(--text-muted) !important;
+body .md-search__input::placeholder,
+body .md-search__icon {
+  color: var(--text-muted);
 }
 
 /* Hero Section */
@@ -281,13 +281,13 @@ body[data-arrase-portal="true"] .md-search {
   margin-bottom: 1rem;
 }
 
-.hero-section h1,
+.md-typeset .hero-section h1,
 .md-typeset h1#life-is-the-ultimate-side-project {
   font-size: clamp(2rem, 1.5rem + 2vw, 3rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.15;
-  margin: 0 0 0.75rem 0 !important;
+  margin: 0 0 0.75rem 0;
   background: linear-gradient(135deg var(--in-oklab), var(--text-main) 20%, var(--accent-primary) 65%, var(--accent-secondary) 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -295,12 +295,12 @@ body[data-arrase-portal="true"] .md-search {
   text-align: center;
 }
 
-.hero-subtitle,
+.md-typeset .hero-subtitle,
 .md-typeset h1#life-is-the-ultimate-side-project + p {
   font-size: clamp(1rem, 0.95rem + 0.25vw, 1.15rem);
   color: var(--text-muted);
   max-width: 42rem;
-  margin: 0 auto 1.25rem auto !important;
+  margin: 0 auto 1.25rem auto;
   line-height: 1.6;
   text-align: center;
 }
@@ -330,11 +330,11 @@ body[data-arrase-portal="true"] .md-search {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.section-header h2 {
+.md-typeset .section-header h2 {
   font-size: 1.15rem;
   font-weight: 650;
   letter-spacing: -0.015em;
-  margin: 0 !important;
+  margin: 0;
   color: var(--text-main);
 }
 
@@ -352,7 +352,7 @@ body[data-arrase-portal="true"] .md-search {
 }
 
 /* Feature Cards — Shared Base & Interactive vs Static Variants */
-.feature-card {
+.md-typeset .feature-card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -360,12 +360,12 @@ body[data-arrase-portal="true"] .md-search {
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   padding: 1.25rem 1.35rem;
-  text-decoration: none !important;
-  color: inherit !important;
+  text-decoration: none;
+  color: inherit;
   position: relative;
   overflow: hidden;
   transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .feature-card::before {
@@ -380,22 +380,22 @@ body[data-arrase-portal="true"] .md-search {
   transition: opacity 0.2s ease;
 }
 
-a.feature-card:hover {
+.md-typeset a.feature-card:hover {
   transform: translateY(-2px);
   background: var(--bg-surface-hover);
   border-color: var(--border-hover);
   box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.25);
 }
 
-a.feature-card:hover::before {
+.md-typeset a.feature-card:hover::before {
   opacity: 1;
 }
 
-[data-md-color-scheme="slate"] div.feature-card:hover {
+[data-md-color-scheme="slate"] .md-typeset div.feature-card:hover {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
-[data-md-color-scheme="default"] div.feature-card:hover {
+[data-md-color-scheme="default"] .md-typeset div.feature-card:hover {
   border-color: rgba(0, 0, 0, 0.14);
 }
 
@@ -408,9 +408,9 @@ a.feature-card:hover::before {
   margin-bottom: 0.75rem;
 }
 
-.feature-icon {
+.md-typeset .feature-icon {
   font-size: 1.25rem;
-  color: var(--accent-primary) !important;
+  color: var(--accent-primary);
   margin-bottom: 0.75rem;
   display: inline-flex;
   align-items: center;
@@ -422,7 +422,7 @@ a.feature-card:hover::before {
   border: 1px solid var(--border-subtle);
 }
 
-.card-top .feature-icon {
+.md-typeset .card-top .feature-icon {
   margin-bottom: 0;
 }
 
@@ -437,32 +437,32 @@ a.feature-card:hover::before {
   transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
-a.feature-card:hover .card-badge {
+.md-typeset a.feature-card:hover .card-badge {
   color: var(--accent-primary);
   border-color: var(--border-hover);
   background: rgba(129, 140, 248, 0.10);
 }
 
 /* Card Content & Tech Tags */
-.feature-card h3 {
+.md-typeset .feature-card h3 {
   font-size: 1.05rem;
   font-weight: 650;
-  color: var(--text-main) !important;
-  margin: 0 0 0.4rem 0 !important;
+  color: var(--text-main);
+  margin: 0 0 0.4rem 0;
   letter-spacing: -0.01em;
   line-height: 1.35;
   transition: color 0.2s ease;
 }
 
-a.feature-card:hover h3 {
-  color: var(--accent-primary) !important;
+.md-typeset a.feature-card:hover h3 {
+  color: var(--accent-primary);
 }
 
-.feature-card p {
+.md-typeset .feature-card p {
   font-size: 0.86rem;
   line-height: 1.5;
   color: var(--text-muted);
-  margin: 0 !important;
+  margin: 0;
   flex-grow: 1;
 }
 
@@ -507,15 +507,15 @@ a.feature-card:hover h3 {
 
 /* High-Contrast / Forced Colors Accessibility Fallback */
 @media (forced-colors: active) {
-  .feature-card,
-  .arrase-portal-link,
+  .md-typeset .feature-card,
+  body .arrase-portal-link,
   .hero-eyebrow,
   .card-tag,
   .card-badge {
     border: 1px solid CanvasText;
   }
 
-  .hero-section h1,
+  .md-typeset .hero-section h1,
   .md-typeset h1#life-is-the-ultimate-side-project {
     background: none;
     -webkit-text-fill-color: CanvasText;

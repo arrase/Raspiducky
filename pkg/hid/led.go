@@ -108,19 +108,39 @@ func (w *LEDWatcher) SetReader(r io.Reader) {
 	w.reader = r
 }
 
-func (w *LEDWatcher) streamReader(r io.Reader, buf []byte, isCustomReader bool) bool {
-	defer func() {
-		if !isCustomReader {
-			w.mu.Lock()
-			if w.file == r {
-				w.file = nil
-			}
-			w.mu.Unlock()
-			if closer, ok := r.(io.Closer); ok {
-				_ = closer.Close()
-			}
+func (w *LEDWatcher) cleanupReader(r io.Reader, isCustomReader bool) {
+	if isCustomReader {
+		return
+	}
+	w.mu.Lock()
+	if w.file == r {
+		w.file = nil
+	}
+	w.mu.Unlock()
+	if closer, ok := r.(io.Closer); ok {
+		_ = closer.Close()
+	}
+}
+
+func (w *LEDWatcher) handleReadError(r io.Reader, isCustomReader bool) bool {
+	if isCustomReader {
+		w.mu.Lock()
+		if w.reader == r {
+			w.reader = nil
 		}
-	}()
+		w.mu.Unlock()
+		return true
+	}
+	select {
+	case <-w.stopCh:
+		return false
+	case <-time.After(200 * time.Millisecond):
+		return true
+	}
+}
+
+func (w *LEDWatcher) streamReader(r io.Reader, buf []byte, isCustomReader bool) bool {
+	defer w.cleanupReader(r, isCustomReader)
 
 	for {
 		select {
@@ -134,20 +154,7 @@ func (w *LEDWatcher) streamReader(r io.Reader, buf []byte, isCustomReader bool) 
 			w.UpdateState(buf[0])
 		}
 		if err != nil {
-			if isCustomReader {
-				w.mu.Lock()
-				if w.reader == r {
-					w.reader = nil
-				}
-				w.mu.Unlock()
-				return true
-			}
-			select {
-			case <-w.stopCh:
-				return false
-			case <-time.After(200 * time.Millisecond):
-				return true
-			}
+			return w.handleReadError(r, isCustomReader)
 		}
 	}
 }

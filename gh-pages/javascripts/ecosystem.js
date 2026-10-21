@@ -5,13 +5,13 @@
     const saved = localStorage.getItem(THEME_KEY);
     if (saved !== "slate" && saved !== "default") return;
 
-    if (document.body.getAttribute("data-md-color-scheme") !== saved) {
-      document.body.setAttribute("data-md-color-scheme", saved);
+    if (document.body.dataset.mdColorScheme !== saved) {
+      document.body.dataset.mdColorScheme = saved;
     }
 
     const inputs = document.querySelectorAll('input[name="__palette"]');
     inputs.forEach((input) => {
-      const scheme = input.getAttribute("data-md-color-scheme");
+      const scheme = input.dataset.mdColorScheme;
       if (scheme === saved && !input.checked) {
         input.checked = true;
       }
@@ -20,15 +20,12 @@
 
   function bindThemeSync() {
     const paletteForm = document.querySelector('form[data-md-component="palette"]');
-    if (paletteForm && !paletteForm.hasAttribute("data-arrase-bound")) {
-      paletteForm.setAttribute("data-arrase-bound", "true");
+    if (paletteForm && !paletteForm.dataset.arraseBound) {
+      paletteForm.dataset.arraseBound = "true";
       paletteForm.addEventListener("change", (event) => {
-        const target = event.target;
-        if (target && target.getAttribute) {
-          const scheme = target.getAttribute("data-md-color-scheme");
-          if (scheme === "slate" || scheme === "default") {
-            localStorage.setItem(THEME_KEY, scheme);
-          }
+        const scheme = event.target?.dataset?.mdColorScheme;
+        if (scheme === "slate" || scheme === "default") {
+          localStorage.setItem(THEME_KEY, scheme);
         }
       });
     }
@@ -39,11 +36,11 @@
     const isRootPortal = path === "/" || path === "/index.html";
 
     if (isRootPortal) {
-      document.body.setAttribute("data-arrase-portal", "true");
+      document.body.dataset.arrasePortal = "true";
       return;
     }
 
-    document.body.removeAttribute("data-arrase-portal");
+    delete document.body.dataset.arrasePortal;
 
     const headerInner = document.querySelector(".md-header__inner");
     if (!headerInner || headerInner.querySelector(".arrase-portal-link")) {

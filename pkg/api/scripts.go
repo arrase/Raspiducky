@@ -15,6 +15,7 @@ const (
 	defaultDelay1000 = "DELAY 1000\n"
 	defaultEnter     = "ENTER\n"
 	defaultJSDelay   = "    delay(200);\n"
+	duckyExt         = ".ducky"
 )
 
 // ScriptManager manages saving, loading, and deleting payload scripts.
@@ -43,7 +44,7 @@ func NewScriptManager(storageDir string) (*ScriptManager, error) {
 
 func isScriptFile(name string) bool {
 	lower := strings.ToLower(name)
-	return strings.HasSuffix(lower, ".ducky") || strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".txt")
+	return strings.HasSuffix(lower, duckyExt) || strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".txt")
 }
 
 // ListScripts returns all saved scripts from disk.
@@ -117,7 +118,7 @@ func (sm *ScriptManager) resolveScriptPath(name string) (string, error) {
 func normalizeScriptName(name, scriptType string) string {
 	stem := name
 	lower := strings.ToLower(name)
-	for _, ext := range []string{".ducky", ".txt", ".js"} {
+	for _, ext := range []string{duckyExt, ".txt", ".js"} {
 		if strings.HasSuffix(lower, ext) {
 			stem = name[:len(name)-len(ext)]
 			break
@@ -132,7 +133,7 @@ func normalizeScriptName(name, scriptType string) string {
 	if strings.HasSuffix(lower, ".txt") {
 		return stem + ".txt"
 	}
-	return stem + ".ducky"
+	return stem + duckyExt
 }
 
 // SaveScript writes a script to disk and returns its normalized filename.

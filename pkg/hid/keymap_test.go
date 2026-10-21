@@ -20,14 +20,22 @@ func TestGetLayout(t *testing.T) {
 	}
 }
 
+func assertRuneMapping(t *testing.T, layoutName string, l *Layout, ch rune, wantMod, wantKey uint8) {
+	t.Helper()
+	report, ok := l.Runes[ch]
+	if !ok {
+		t.Fatalf("%s missing rune %q", layoutName, ch)
+	}
+	if report[0] != wantMod || report[2] != wantKey {
+		t.Errorf("%s %q mismatch: got mod=%#x key=%#x, want mod=%#x key=%#x",
+			layoutName, ch, report[0], report[2], wantMod, wantKey)
+	}
+}
+
 func TestLayoutMappings(t *testing.T) {
 	de, _ := GetLayout("DE")
-	if r := de.Runes['?']; r[0] != ModLeftShift || r[2] != KeyMinus {
-		t.Errorf("DE '?' mapping mismatch: got mod=%#x key=%#x", r[0], r[2])
-	}
-	if r := de.Runes['&']; r[0] != ModLeftShift || r[2] != Key6 {
-		t.Errorf("DE '&' mapping mismatch: got mod=%#x key=%#x", r[0], r[2])
-	}
+	assertRuneMapping(t, "DE", de, '?', ModLeftShift, KeyMinus)
+	assertRuneMapping(t, "DE", de, '&', ModLeftShift, Key6)
 
 	es, _ := GetLayout("ES")
 	esCases := []struct {
@@ -43,14 +51,7 @@ func TestLayoutMappings(t *testing.T) {
 		{'|', ModRightAlt, Key1},
 	}
 	for _, tc := range esCases {
-		report, ok := es.Runes[tc.ch]
-		if !ok {
-			t.Fatalf("ES missing rune %q", tc.ch)
-		}
-		if report[0] != tc.mod || report[2] != tc.key {
-			t.Errorf("ES %q mismatch: got mod=%#x key=%#x, want mod=%#x key=%#x",
-				tc.ch, report[0], report[2], tc.mod, tc.key)
-		}
+		assertRuneMapping(t, "ES", es, tc.ch, tc.mod, tc.key)
 	}
 
 	fr, _ := GetLayout("FR")
@@ -65,14 +66,7 @@ func TestLayoutMappings(t *testing.T) {
 		{'+', ModLeftShift, KeyEqual},
 	}
 	for _, tc := range frCases {
-		report, ok := fr.Runes[tc.ch]
-		if !ok {
-			t.Fatalf("FR missing rune %q", tc.ch)
-		}
-		if report[0] != tc.mod || report[2] != tc.key {
-			t.Errorf("FR %q mismatch: got mod=%#x key=%#x, want mod=%#x key=%#x",
-				tc.ch, report[0], report[2], tc.mod, tc.key)
-		}
+		assertRuneMapping(t, "FR", fr, tc.ch, tc.mod, tc.key)
 	}
 }
 
