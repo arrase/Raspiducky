@@ -1,15 +1,16 @@
 # 🦆⚡ Raspiducky
 
-[![Quality Gate Status](https://img.shields.io/sonar/quality_gate/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Coverage](https://img.shields.io/sonar/coverage/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Bugs](https://img.shields.io/sonar/bugs/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Vulnerabilities](https://img.shields.io/sonar/vulnerabilities/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Code Smells](https://img.shields.io/sonar/code_smells/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Tech Debt](https://img.shields.io/sonar/tech_debt/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Duplicated Lines](https://img.shields.io/sonar/duplicated_lines_density/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Security Rating](https://img.shields.io/sonar/security_rating/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Reliability Rating](https://img.shields.io/sonar/reliability_rating/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
-[![Maintainability Rating](https://img.shields.io/sonar/sqale_rating/arrase_Raspiducky?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud)](https://sonarcloud.io/summary/new_code?id=arrase_Raspiducky)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=alert_status)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=coverage)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=bugs)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=vulnerabilities)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=code_smells)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=sqale_index)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=duplicated_lines_density)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=security_rating)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=reliability_rating)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=sqale_rating)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=ncloc)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
 
 A modern, high-performance, and lightweight USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi Zero W (and compatible SBCs).
 
