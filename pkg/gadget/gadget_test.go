@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -145,7 +146,7 @@ func TestDestroyGadgetUnlocked_TeardownOrder(t *testing.T) {
 	}
 
 	// Verify UDC was unbound in Step 1
-	if udcData, readErr := os.ReadFile(filepath.Join(gadgetPath, "UDC")); readErr != nil || len(udcData) != 0 {
+	if udcData, readErr := os.ReadFile(filepath.Join(gadgetPath, "UDC")); readErr != nil || strings.TrimSpace(string(udcData)) != "" {
 		t.Errorf("expected UDC to be unbound (empty) before configs/c.1 removal, got %q (err=%v)", string(udcData), readErr)
 	}
 

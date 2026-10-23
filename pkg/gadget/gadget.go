@@ -479,10 +479,11 @@ func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
 
 	// 1. Unbind UDC
 	udcPath := filepath.Join(gadgetPath, "UDC")
-	if _, err := os.Stat(udcPath); err == nil {
-		if err := os.WriteFile(udcPath, []byte(""), 0644); err != nil {
+	if data, err := os.ReadFile(udcPath); err == nil && strings.TrimSpace(string(data)) != "" {
+		if err := os.WriteFile(udcPath, []byte("\n"), 0644); err != nil {
 			return err
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	// 2. Remove symlinks in os_desc (os_desc/c.1 must be unlinked before configs/c.1 is removed)

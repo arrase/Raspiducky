@@ -162,13 +162,29 @@ fi
 REBOOT_REQUIRED=0
 
 if [ -n "$CONFIG_TXT" ]; then
-    if ! grep -q "^dtoverlay=dwc2" "$CONFIG_TXT"; then
-        info "Adding 'dtoverlay=dwc2' to $CONFIG_TXT..."
-        echo "dtoverlay=dwc2" >> "$CONFIG_TXT"
+    if grep -q "^otg_mode=1" "$CONFIG_TXT"; then
+        sed -i 's/^otg_mode=1/#otg_mode=1/' "$CONFIG_TXT"
         REBOOT_REQUIRED=1
-        success "Added dwc2 overlay to $CONFIG_TXT"
+        info "Disabled 'otg_mode=1' in $CONFIG_TXT for DWC2 gadget compatibility."
+    fi
+
+    if grep -q "^dtoverlay=dwc2,dr_mode=host" "$CONFIG_TXT"; then
+        sed -i 's/^dtoverlay=dwc2,dr_mode=host/#dtoverlay=dwc2,dr_mode=host/' "$CONFIG_TXT"
+        REBOOT_REQUIRED=1
+        info "Disabled host-only 'dtoverlay=dwc2,dr_mode=host' in $CONFIG_TXT."
+    fi
+
+    if grep -q "^dtoverlay=dwc2$" "$CONFIG_TXT"; then
+        sed -i 's/^dtoverlay=dwc2$/dtoverlay=dwc2,dr_mode=peripheral/' "$CONFIG_TXT"
+        REBOOT_REQUIRED=1
+        success "Updated dwc2 overlay to 'dtoverlay=dwc2,dr_mode=peripheral' in $CONFIG_TXT"
+    elif ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_TXT"; then
+        info "Adding 'dtoverlay=dwc2,dr_mode=peripheral' to $CONFIG_TXT..."
+        echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_TXT"
+        REBOOT_REQUIRED=1
+        success "Added 'dtoverlay=dwc2,dr_mode=peripheral' overlay to $CONFIG_TXT"
     else
-        info "DWC2 overlay already present in $CONFIG_TXT."
+        info "DWC2 peripheral overlay already present in $CONFIG_TXT."
     fi
 fi
 
@@ -261,7 +277,7 @@ echo "  - Run Payload CLI  : sudo raspiducky run <script_path>"
 echo ""
 
 if [ "$REBOOT_REQUIRED" -eq 1 ]; then
-    warn "A new USB overlay (dtoverlay=dwc2) was added to your kernel config."
+    warn "A new USB overlay (dtoverlay=dwc2,dr_mode=peripheral) was added to your kernel config."
     warn "If this is the first installation, please REBOOT your Raspberry Pi to activate USB Gadget hardware mode:"
     warn "  sudo reboot"
 fi
