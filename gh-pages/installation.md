@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh
 
 1. Detects system architecture (`armv6l`, `armv7l`, `aarch64`, or `x86_64`).
 2. Downloads the matching pre-compiled release binary to `/usr/local/bin/raspiducky`.
-3. Appends `dtoverlay=dwc2` to `/boot/config.txt` or `/boot/firmware/config.txt`.
+3. Appends `dtoverlay=dwc2,dr_mode=peripheral` to `/boot/config.txt` or `/boot/firmware/config.txt`.
 4. Ensures `dwc2` and `libcomposite` are loaded in `/etc/modules`.
 5. Configures `/etc/fstab` to persist `/sys/kernel/debug` mount.
 6. Installs `/etc/udev/rules.d/99-raspiducky-hid.rules` for `/dev/hidg*` device access.

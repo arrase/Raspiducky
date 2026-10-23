@@ -41,8 +41,8 @@ A common misconception is that any USB port can emulate a USB keyboard or flash 
 | **Raspberry Pi Zero 2 W** | Micro-USB (Data Port) | ARM64 / ARMv7 | `dwc2` (DesignWare USB2) | High-performance quad-core ARM 64-bit CPU. |
 | **Raspberry Pi Model A / A+** | Standard Type-A OTG Port | ARMv6 (32-bit) | `dwc2` (DesignWare USB2) | Direct SoC USB connection (no onboard hub). |
 | **Raspberry Pi 3A+** | Standard Type-A OTG Port | ARM64 / ARMv7 | `dwc2` (DesignWare USB2) | Direct SoC USB connection (no onboard hub). |
-| **Raspberry Pi 4 Model B** | USB-C Power/Data Port | ARM64 (64-bit) | `dwc3` (DesignWare USB3) | USB-C port supports high-speed OTG. |
-| **Raspberry Pi 5** | USB-C Power/Data Port | ARM64 (64-bit) | `dwc3` (DesignWare USB3) | Dual-role USB-C controller support. |
+| **Raspberry Pi 4 Model B** | USB-C Power/Data Port | ARM64 (64-bit) | `dwc2` (DesignWare USB2) | Requires `dr_mode=peripheral` on USB-C port. |
+| **Raspberry Pi 5** | USB-C Power/Data Port | ARM64 (64-bit) | `dwc2` (DesignWare USB2) | Requires `dr_mode=peripheral` on USB-C port. |
 | **Banana Pi M2 / M1** | Micro-USB OTG Port | ARMv7 (32-bit) | `sunxi-musb` | Compatible with Allwinner H3/A20 SoCs. |
 | **Orange Pi Zero / 1 / 2 / 3 / 5** | Micro-USB / USB-C OTG Port | ARMv7 / ARM64 | `sunxi-musb` / `dwc3` | Check specific board OTG port labeling. |
 | **NanoPi NEO / R2S / R4S** | Micro-USB / USB-C OTG Port | ARMv7 / ARM64 | `dwc2` / `dwc3` | High-density compact hardware targets. |
@@ -57,10 +57,10 @@ Single Board Computer USB controllers have physical limitations on how many IN/O
 ```text
              IN Hardware Endpoint Limit Comparison
   
-  DWC2 Controller (RPi Zero / Zero W / Zero 2 W / 3A+):
+  DWC2 Controller (RPi Zero / Zero W / Zero 2 W / 3A+ / 4B / Pi 5):
   [ EP0 ] [ EP1 ] [ EP2 ] [ EP3 ] [ EP4 ] [ EP5 ] [ EP6 ]  ---> MAX 7 IN Endpoints
   
-  DWC3 Controller (RPi 4B / Pi 5 / RK3399):
+  DWC3 Controller (Rock Pi 4 / 5 / RK3399 / RK3588):
   [ EP0 ] [ EP1 ] [ EP2 ] ... [ EP14 ] [ EP15 ]           ---> MAX 15 IN Endpoints
 ```
 
