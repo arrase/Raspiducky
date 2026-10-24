@@ -215,7 +215,13 @@ body .arrase-portal-link {
   line-height: 1.4;
   text-decoration: none;
   white-space: nowrap;
-  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body .arrase-portal-link {
+    transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  }
 }
 
 body .arrase-portal-link:hover {
