@@ -22,8 +22,12 @@ func TestKeyboard_TypeStringAndPress(t *testing.T) {
 	kbd.SetTypingSpeed(0, 0)
 
 	ctx := context.Background()
+	start := time.Now()
 	if err := kbd.TypeString(ctx, "aA"); err != nil {
 		t.Fatalf("TypeString failed: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 80*time.Millisecond {
+		t.Errorf("Expected TypeString(\"aA\") to hold and pause at least 80ms, took %v", elapsed)
 	}
 
 	// Each character writes 1 press report (8 bytes) + 1 release report (8 bytes) = 16 bytes
@@ -46,15 +50,54 @@ func TestKeyboard_TypeStringAndPress(t *testing.T) {
 	}
 
 	buf.Reset()
+	start = time.Now()
 	if err := kbd.Press(ctx, "GUI r"); err != nil {
 		t.Fatalf("Press failed: %v", err)
 	}
+	if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
+		t.Errorf("Expected Press(\"GUI r\") to hold and pause at least 60ms, took %v", elapsed)
+	}
+	data = buf.Bytes()
+	// Modifier-only report (8B) + modifier+key report (8B) + release report (8B) = 24 bytes
+	if len(data) != 24 {
+		t.Fatalf("Expected 24 bytes for modifier+key Press, got %d", len(data))
+	}
+	if data[0] != ModLeftGUI || data[2] != 0 {
+		t.Errorf("Unexpected modifier lead report for 'GUI r': %v", data[:8])
+	}
+	if data[8] != ModLeftGUI || data[10] != KeyR {
+		t.Errorf("Unexpected combo report for 'GUI r': %v", data[8:16])
+	}
+	if data[16] != 0 || data[18] != 0 {
+		t.Errorf("Unexpected release report for 'GUI r': %v", data[16:24])
+	}
+
+	buf.Reset()
+	start = time.Now()
+	if err := kbd.Press(ctx, "ENTER"); err != nil {
+		t.Fatalf("Press ENTER failed: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
+		t.Errorf("Expected Press(\"ENTER\") to hold and pause at least 40ms, took %v", elapsed)
+	}
 	data = buf.Bytes()
 	if len(data) != 16 {
-		t.Fatalf("Expected 16 bytes for Press, got %d", len(data))
+		t.Fatalf("Expected 16 bytes for single-key Press, got %d", len(data))
 	}
-	if data[0] != ModLeftGUI || data[2] != KeyR {
-		t.Errorf("Unexpected report for 'GUI r': %v", data[:8])
+	if data[0] != 0 || data[2] != KeyEnter {
+		t.Errorf("Unexpected report for 'ENTER': %v", data[:8])
+	}
+
+	buf.Reset()
+	if err := kbd.Press(ctx, "GUI"); err != nil {
+		t.Fatalf("Press GUI failed: %v", err)
+	}
+	data = buf.Bytes()
+	if len(data) != 16 {
+		t.Fatalf("Expected 16 bytes for modifier-only Press, got %d", len(data))
+	}
+	if data[0] != ModLeftGUI || data[2] != 0 {
+		t.Errorf("Unexpected report for 'GUI': %v", data[:8])
 	}
 }
 

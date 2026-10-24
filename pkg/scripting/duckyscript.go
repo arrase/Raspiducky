@@ -37,24 +37,35 @@ func ParseDuckyScript(duckySource string) (string, error) {
 	return strings.Join(jsLines, "\n"), nil
 }
 
-func appendDuckyLine(jsLines []string, line string, lineNum, defaultDelay int, lastJSCommand string) ([]string, int, string, error) {
-	parts := strings.SplitN(line, " ", 2)
-	cmd := strings.ToUpper(parts[0])
-	arg := ""
-	if len(parts) > 1 {
-		arg = parts[1]
+func splitCommandLine(line string) (string, string) {
+	idx := strings.IndexAny(line, " \t")
+	if idx == -1 {
+		return strings.ToUpper(line), ""
 	}
+	return strings.ToUpper(line[:idx]), line[idx+1:]
+}
+
+func appendDuckyLine(jsLines []string, line string, lineNum, defaultDelay int, lastJSCommand string) ([]string, int, string, error) {
+	cmd, arg := splitCommandLine(line)
 
 	switch cmd {
 	case "REM":
 		return append(jsLines, fmt.Sprintf("// %s", strings.TrimSpace(arg))), defaultDelay, lastJSCommand, nil
 
 	case "DEFAULT_DELAY", "DEFAULTDELAY":
-		delayVal, err := parseDefaultDelay(lineNum, cmd, arg)
+		delayVal, err := parseDelayArg(lineNum, cmd, arg)
 		if err != nil {
 			return nil, 0, "", err
 		}
 		return append(jsLines, fmt.Sprintf("// Default delay set to %d ms", delayVal)), delayVal, lastJSCommand, nil
+
+	case "DELAY":
+		ms, err := parseDelayArg(lineNum, cmd, arg)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		jsCmd := fmt.Sprintf("delay(%d);", ms)
+		return append(jsLines, jsCmd), defaultDelay, jsCmd, nil
 
 	case "REPEAT":
 		repeatJS, err := parseRepeatCommand(lineNum, arg, lastJSCommand, defaultDelay)
@@ -64,18 +75,21 @@ func appendDuckyLine(jsLines []string, line string, lineNum, defaultDelay int, l
 		return append(jsLines, repeatJS), defaultDelay, lastJSCommand, nil
 	}
 
-	jsCmd := translateCommandToJS(cmd, arg, line)
+	jsCmd := translateCommandToJS(cmd, arg, line, defaultDelay)
 	jsLines = append(jsLines, jsCmd)
-	if defaultDelay > 0 && !strings.HasPrefix(jsCmd, "delay(") {
+	if defaultDelay > 0 {
 		jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
 	}
 	return jsLines, defaultDelay, jsCmd, nil
 }
 
-func parseDefaultDelay(lineNum int, cmd, arg string) (int, error) {
+func parseDelayArg(lineNum int, cmd, arg string) (int, error) {
 	fields := strings.Fields(arg)
 	if len(fields) == 0 {
 		return 0, fmt.Errorf("line %d: %s requires a delay argument", lineNum, cmd)
+	}
+	if len(fields) > 1 {
+		return 0, fmt.Errorf("line %d: invalid %s value %q", lineNum, cmd, strings.TrimSpace(arg))
 	}
 	delayVal, err := strconv.Atoi(fields[0])
 	if err != nil || delayVal < 0 {
@@ -134,20 +148,19 @@ func translateMouseCommand(cmd, arg string) (string, bool) {
 	}
 }
 
-func translateCommandToJS(cmd, arg, line string) string {
+func translateCommandToJS(cmd, arg, line string, defaultDelay int) string {
 	if js, ok := translateMouseCommand(cmd, arg); ok {
 		return js
 	}
 
 	switch cmd {
-	case "DELAY":
-		ms, _ := strconv.Atoi(strings.TrimSpace(arg))
-		return fmt.Sprintf("delay(%d);", ms)
-
 	case "STRING":
 		return fmt.Sprintf("type(%s);", strconv.Quote(arg))
 
 	case "STRINGLN":
+		if defaultDelay > 0 {
+			return fmt.Sprintf("type(%s);\ndelay(%d);\npress(\"ENTER\");", strconv.Quote(arg), defaultDelay)
+		}
 		return fmt.Sprintf("type(%s);\npress(\"ENTER\");", strconv.Quote(arg))
 
 	case "LAYOUT":

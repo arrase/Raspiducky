@@ -29,6 +29,9 @@ func TestParseDuckyScript_CaseInsensitiveAndRepeatDefaultDelay(t *testing.T) {
 default_delay 50
 STRING a
 repeat 3
+STRINGLN b
+DELAY	200
+STRING	tabbed
 `
 	js, err := ParseDuckyScript(src)
 	if err != nil {
@@ -41,6 +44,13 @@ repeat 3
 		`type("a");`,
 		`delay(50);`,
 		`for (let _i = 0; _i < 3; _i++) { type("a"); delay(50); }`,
+		`type("b");`,
+		`delay(50);`,
+		`press("ENTER");`,
+		`delay(50);`,
+		`delay(200);`,
+		`type("tabbed");`,
+		`delay(50);`,
 	}
 	expected := strings.Join(expectedLines, "\n")
 	if js != expected {
@@ -67,6 +77,36 @@ func TestParseDuckyScript_Errors(t *testing.T) {
 		{
 			name:    "default_delay non-int",
 			src:     "DEFAULT_DELAY abc",
+			wantSub: "line 1",
+		},
+		{
+			name:    "default_delay extra token",
+			src:     "DEFAULT_DELAY 100 ENTER",
+			wantSub: "line 1",
+		},
+		{
+			name:    "delay missing arg",
+			src:     "DELAY",
+			wantSub: "line 1",
+		},
+		{
+			name:    "delay negative",
+			src:     "DELAY -50",
+			wantSub: "line 1",
+		},
+		{
+			name:    "delay non-int",
+			src:     "DELAY abc",
+			wantSub: "line 1",
+		},
+		{
+			name:    "delay concatenated command",
+			src:     "DELAY 500ENTER",
+			wantSub: "line 1",
+		},
+		{
+			name:    "delay extra command on same line",
+			src:     "DELAY 500 ENTER",
 			wantSub: "line 1",
 		},
 		{
