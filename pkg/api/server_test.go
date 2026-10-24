@@ -249,3 +249,70 @@ func TestRunnerEngine_StopAndImmediateRestart_DoesNotOverwriteSecondJob(t *testi
 
 	_ = server.runnerEngine.Stop()
 }
+
+func TestGadgetManager_UpdateConfig_TypingDelayMs(t *testing.T) {
+	server := setupTestServer(t, nil)
+
+	status, err := server.gadgetManager.UpdateConfig(GadgetConfig{
+		Keyboard:       true,
+		Mouse:          false,
+		VendorID:       "0x1d6b",
+		ProductID:      "0x0104",
+		Manufacturer:   "Raspiducky Labs",
+		Product:        "Raspiducky HID",
+		SerialNumber:   "RPD-2026-0001",
+		KeyboardLayout: "US",
+		TypingDelayMs:  35,
+	})
+	if err != nil {
+		t.Fatalf("UpdateConfig failed: %v", err)
+	}
+
+	if status.Config.TypingDelayMs != 35 {
+		t.Errorf("Expected status.Config.TypingDelayMs=35, got %d", status.Config.TypingDelayMs)
+	}
+
+	delay, jitter := server.gadgetManager.keyboard.GetTypingSpeed()
+	if delay != 35 || jitter != 0 {
+		t.Errorf("Expected keyboard typing speed (35, 0), got (%d, %d)", delay, jitter)
+	}
+
+	// Verify reloading from existing gadget_config.json without typingDelayMs preserves default 10ms
+	legacyJSON := `{"keyboard":true,"mouse":false,"vendorId":"0x1d6b","productId":"0x0104","manufacturer":"Raspiducky","product":"HID","serialNumber":"RPD-1","keyboardLayout":"US"}`
+	if err := os.WriteFile(filepath.Join(server.gadgetManager.storageDir, "gadget_config.json"), []byte(legacyJSON), 0644); err != nil {
+		t.Fatalf("WriteFile legacy gadget_config.json: %v", err)
+	}
+	reloadedGM := NewGadgetManager(server.hub, server.gadgetManager.keyboard, server.gadgetManager.mouse, server.gadgetManager.storageDir)
+	if reloadedGM.currentStatus.Config.TypingDelayMs != 10 {
+		t.Errorf("Expected default TypingDelayMs=10 when missing from saved config, got %d", reloadedGM.currentStatus.Config.TypingDelayMs)
+	}
+}
+
+func TestRunnerEngine_Run_TypingDelayMs(t *testing.T) {
+	server := setupTestServer(t, nil)
+
+	delayMs := 45
+	_, err := server.runnerEngine.Run(RunRequest{
+		Name:          "typing_delay.ducky",
+		Type:          "duckyscript",
+		Script:        "DELAY 10\n",
+		TypingDelayMs: &delayMs,
+	})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		job := server.runnerEngine.GetActiveJob()
+		if job != nil && job.Status == "completed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	delay, jitter := server.runnerEngine.keyboard.GetTypingSpeed()
+	if delay != 45 || jitter != 0 {
+		t.Errorf("Expected keyboard typing speed (45, 0), got (%d, %d)", delay, jitter)
+	}
+}

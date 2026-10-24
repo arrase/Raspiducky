@@ -81,7 +81,7 @@ func (re *RunnerEngine) Run(req RunRequest) (JobStatus, error) {
 	re.broadcastLog("INFO", "ENGINE", fmt.Sprintf("Job [%s] started: %s (%s)", jobID, scriptName, req.Type))
 
 	// Execute in background goroutine
-	go re.executeJob(ctx, job, req.Script)
+	go re.executeJob(ctx, job, req.Script, req.TypingDelayMs)
 
 	return job, nil
 }
@@ -123,8 +123,12 @@ func isJSScript(scriptType, scriptName string) bool {
 		(scriptType == "" && strings.HasSuffix(strings.ToLower(scriptName), ".js"))
 }
 
-func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptContent string) {
+func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptContent string, typingDelayMs *int) {
 	var execErr error
+
+	if typingDelayMs != nil && re.keyboard != nil {
+		re.keyboard.SetTypingSpeed(*typingDelayMs, 0)
+	}
 
 	engine := scripting.NewScriptEngine(re.keyboard, re.mouse, re.ledWatcher)
 

@@ -203,9 +203,15 @@
                                     </div>
                                 </div>
 
-                                <div class="form-group">
-                                    <label for="serial-number">Serial Number</label>
-                                    <input type="text" id="serial-number" placeholder="RPD-2026-0001" value="RPD-2026-0001" required>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="serial-number">Serial Number</label>
+                                        <input type="text" id="serial-number" placeholder="RPD-2026-0001" value="RPD-2026-0001" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="typing-delay">Typing Delay (ms)</label>
+                                        <input type="number" id="typing-delay" placeholder="10" value="10" min="0" max="5000" required>
+                                    </div>
                                 </div>
 
                                 <div class="form-actions">
@@ -240,6 +246,10 @@
                                     <option value="duckyscript">DuckyScript 1.0/2.0</option>
                                     <option value="javascript">JavaScript / HIDScript</option>
                                 </select>
+                            </div>
+                            <div class="form-group inline">
+                                <label for="editor-typing-delay">Delay (ms):</label>
+                                <input type="number" id="editor-typing-delay" value="10" min="0" max="5000" style="width: 85px;">
                             </div>
                         </div>
 

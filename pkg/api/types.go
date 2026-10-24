@@ -18,6 +18,7 @@ type GadgetConfig struct {
 	SerialNumber   string `json:"serialNumber"`
 	StorageSizeMB  int    `json:"storageSizeMb"`
 	KeyboardLayout string `json:"keyboardLayout"`
+	TypingDelayMs  int    `json:"typingDelayMs"`
 }
 
 // GadgetStatus represents the active status of the USB gadget subsystem.
@@ -40,9 +41,10 @@ type Script struct {
 
 // RunRequest payload for starting script execution.
 type RunRequest struct {
-	Script string `json:"script"`
-	Name   string `json:"name,omitempty"`
-	Type   string `json:"type"` // "duckyscript" or "javascript"
+	Script        string `json:"script"`
+	Name          string `json:"name,omitempty"`
+	Type          string `json:"type"` // "duckyscript" or "javascript"
+	TypingDelayMs *int   `json:"typingDelayMs,omitempty"`
 }
 
 // JobStatus describes an active or past script execution job.

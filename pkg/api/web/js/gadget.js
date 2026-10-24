@@ -37,11 +37,15 @@ function populateGadgetForm(cfg) {
         ['serial-number', cfg.serialNumber],
         ['keyboard-layout', cfg.keyboardLayout],
         ['storage-size', cfg.storageSizeMb],
+        ['typing-delay', cfg.typingDelayMs],
     ];
     for (const [id, value] of fields) {
         if (value !== undefined && value !== null) {
             document.getElementById(id).value = value;
         }
+    }
+    if (cfg.typingDelayMs !== undefined && cfg.typingDelayMs !== null) {
+        document.getElementById('editor-typing-delay').value = cfg.typingDelayMs;
     }
 }
 
@@ -132,7 +136,8 @@ async function applyGadgetConfig(event) {
         product: document.getElementById('product-name').value.trim(),
         serialNumber: document.getElementById('serial-number').value.trim(),
         keyboardLayout: document.getElementById('keyboard-layout').value.trim(),
-        storageSizeMb: Number.parseInt(document.getElementById('storage-size').value, 10)
+        storageSizeMb: Number.parseInt(document.getElementById('storage-size').value, 10),
+        typingDelayMs: Number.parseInt(document.getElementById('typing-delay').value, 10)
     };
     for (const { id, key } of GADGET_TOGGLES) {
         payload[key] = document.getElementById(id).checked;

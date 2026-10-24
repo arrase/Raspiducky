@@ -55,6 +55,7 @@ async function runScript() {
     const code = document.getElementById('code-editor').value;
     const name = document.getElementById('script-title').value.trim();
     const type = document.getElementById('script-format').value;
+    const typingDelayMs = Number.parseInt(document.getElementById('editor-typing-delay').value, 10);
 
     if (!code.trim()) {
         appendLog('WARN', 'EDITOR', 'Cannot execute empty script.');
@@ -74,7 +75,8 @@ async function runScript() {
         const response = await apiCall('/api/run', 'POST', {
             script: code,
             name,
-            type
+            type,
+            typingDelayMs
         });
 
         if (response.jobId && state.lastTerminalJobId !== response.jobId) {

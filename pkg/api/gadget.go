@@ -41,13 +41,14 @@ func NewGadgetManager(hub *Hub, keyboard *hid.Keyboard, mouse *hid.Mouse, storag
 		SerialNumber:   "RPD-2026-0001",
 		StorageSizeMB:  100,
 		KeyboardLayout: "US",
+		TypingDelayMs:  10,
 	}
 
 	if storageDir != "" {
 		_ = os.MkdirAll(storageDir, 0755)
 		cfgPath := filepath.Join(storageDir, "gadget_config.json")
 		if data, err := os.ReadFile(cfgPath); err == nil {
-			var savedCfg GadgetConfig
+			savedCfg := initialCfg
 			if err := json.Unmarshal(data, &savedCfg); err == nil {
 				initialCfg = savedCfg
 			}
@@ -135,6 +136,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	}
 
 	if gm.keyboard != nil {
+		gm.keyboard.SetTypingSpeed(cfg.TypingDelayMs, 0)
 		_ = gm.keyboard.Close()
 	}
 	if gm.mouse != nil {
