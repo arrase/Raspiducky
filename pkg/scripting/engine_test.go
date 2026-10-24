@@ -108,3 +108,36 @@ func TestScriptEngine_DuckyScriptMinusKeyAndTrailingSpace(t *testing.T) {
 		t.Errorf("expected 'STRING  ' report (mod=0, key=KeySpace), got (mod=0x%02x, key=0x%02x)", data[32], data[34])
 	}
 }
+
+func TestScriptEngine_DuckyScriptQuotes(t *testing.T) {
+	var kbdBuf bytes.Buffer
+	kbd, err := hid.NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
+	}
+	kbd.SetWriter(&kbdBuf)
+	kbd.SetTypingSpeed(0, 0)
+
+	engine := NewScriptEngine(kbd, nil, nil)
+	var logBuf bytes.Buffer
+
+	ducky := "STRING '\"‘’“”\n"
+	if err := engine.RunDuckyScript(context.Background(), ducky, &logBuf); err != nil {
+		t.Fatalf("RunDuckyScript failed: %v", err)
+	}
+
+	data := kbdBuf.Bytes()
+	// 6 characters, each writes press (8 bytes) + release (8 bytes) = 96 bytes total
+	if len(data) != 96 {
+		t.Fatalf("expected 96 bytes of keyboard reports, got %d", len(data))
+	}
+
+	wantMods := []uint8{0, hid.ModLeftShift, 0, 0, hid.ModLeftShift, hid.ModLeftShift}
+	for i, wantMod := range wantMods {
+		offset := i * 16
+		if data[offset] != wantMod || data[offset+2] != hid.KeyApostrophe {
+			t.Errorf("char %d: expected (mod=0x%02x, key=KeyApostrophe), got (mod=0x%02x, key=0x%02x)",
+				i, wantMod, data[offset], data[offset+2])
+		}
+	}
+}

@@ -98,3 +98,25 @@ func TestMapKeyName(t *testing.T) {
 		t.Error("Expected false for unknown key name")
 	}
 }
+
+func TestSmartQuoteMappings(t *testing.T) {
+	singleQuotes := []rune{'\u2018', '\u2019', '\u201a', '\u201b'}
+	doubleQuotes := []rune{'\u201c', '\u201d', '\u201e', '\u201f', '\u00ab', '\u00bb'}
+
+	for _, name := range []string{"US", "DE", "ES", "FR"} {
+		l, err := GetLayout(name)
+		if err != nil {
+			t.Fatalf("GetLayout(%q) failed: %v", name, err)
+		}
+
+		wantSingle := l.Runes['\'']
+		for _, q := range singleQuotes {
+			assertRuneMapping(t, name, l, q, wantSingle[0], wantSingle[2])
+		}
+
+		wantDouble := l.Runes['"']
+		for _, q := range doubleQuotes {
+			assertRuneMapping(t, name, l, q, wantDouble[0], wantDouble[2])
+		}
+	}
+}

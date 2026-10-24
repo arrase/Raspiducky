@@ -88,6 +88,18 @@ func init() {
 	layouts["DE"] = buildDELayout()
 	layouts["ES"] = buildESLayout()
 	layouts["FR"] = buildFRLayout()
+	for _, l := range layouts {
+		aliasSmartQuotes(l)
+	}
+}
+
+func aliasSmartQuotes(l *Layout) {
+	for _, q := range []rune{'\u2018', '\u2019', '\u201a', '\u201b'} {
+		l.Runes[q] = l.Runes['\'']
+	}
+	for _, q := range []rune{'\u201c', '\u201d', '\u201e', '\u201f', '\u00ab', '\u00bb'} {
+		l.Runes[q] = l.Runes['"']
+	}
 }
 
 // GetLayout returns the Layout struct for the given layout name ("us", "de", "es", "fr").
