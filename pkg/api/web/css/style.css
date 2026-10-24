@@ -162,7 +162,7 @@ body {
     height: 8px;
     border-radius: 50%;
     background: #333;
-    transition: all 0.3s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .led.active .led-dot {
@@ -194,7 +194,7 @@ body {
     font-size: 0.95rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.25s ease;
+    transition: color 0.25s ease, background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .nav-tab:hover {
@@ -213,7 +213,12 @@ body {
 /* Main Panels */
 .tab-content {
     display: none;
-    animation: fadeIn 0.3s ease-in-out;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .tab-content {
+        animation: fadeIn 0.3s ease-in-out;
+    }
 }
 
 .tab-content.active {
@@ -309,7 +314,7 @@ body {
     cursor: pointer;
     top: 0; left: 0; right: 0; bottom: 0;
     background-color: #262e3d;
-    transition: .3s;
+    transition: background-color 0.3s, border-color 0.3s;
     border-radius: 34px;
 }
 
@@ -321,8 +326,14 @@ body {
     left: 4px;
     bottom: 4px;
     background-color: #a0aec0;
-    transition: .3s;
+    transition: background-color 0.3s, box-shadow 0.3s;
     border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .slider:before {
+        transition: transform 0.3s, background-color 0.3s, box-shadow 0.3s;
+    }
 }
 
 input:checked + .slider {
@@ -372,7 +383,7 @@ input[type="text"], input[type="number"], select, textarea {
     font-family: var(--font-ui);
     font-size: 0.9rem;
     outline: none;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
@@ -392,7 +403,13 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
     font-weight: 600;
     cursor: pointer;
     border: none;
-    transition: all 0.25s ease;
+    transition: background-color 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .btn {
+        transition: background-color 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
+    }
 }
 
 .btn-primary {
@@ -452,7 +469,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
     padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease;
 }
 
 .chip:hover {
@@ -657,7 +674,13 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    transition: all 0.25s ease;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .script-card {
+        transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    }
 }
 
 .script-card:hover {

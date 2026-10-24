@@ -10,7 +10,14 @@ import (
 	"time"
 )
 
-func TestKeyboard_TypeStringAndPress(t *testing.T) {
+func assertReport(t *testing.T, report []byte, mod, key byte) {
+	t.Helper()
+	if report[0] != mod || report[2] != key {
+		t.Errorf("Unexpected report (expected mod=%#x, key=%#x): %v", mod, key, report[:8])
+	}
+}
+
+func TestKeyboard_TypeString(t *testing.T) {
 	kbd, err := NewKeyboard("", "US")
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
@@ -36,41 +43,38 @@ func TestKeyboard_TypeStringAndPress(t *testing.T) {
 		t.Fatalf("Expected 32 bytes written, got %d", len(data))
 	}
 
-	// 'a' -> mod 0, KeyA
-	if data[0] != 0 || data[2] != KeyA {
-		t.Errorf("Unexpected report for 'a': %v", data[:8])
-	}
-	// release -> all zeros
-	if data[8] != 0 || data[10] != 0 {
-		t.Errorf("Unexpected release report: %v", data[8:16])
-	}
-	// 'A' -> ModLeftShift, KeyA
-	if data[16] != ModLeftShift || data[18] != KeyA {
-		t.Errorf("Unexpected report for 'A': %v", data[16:24])
-	}
+	assertReport(t, data[0:8], 0, KeyA)
+	assertReport(t, data[8:16], 0, 0)
+	assertReport(t, data[16:24], ModLeftShift, KeyA)
+}
 
-	buf.Reset()
-	start = time.Now()
+func TestKeyboard_Press(t *testing.T) {
+	kbd, err := NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
+	}
+	defer kbd.Close()
+
+	var buf bytes.Buffer
+	kbd.SetWriter(&buf)
+	kbd.SetTypingSpeed(0, 0)
+
+	ctx := context.Background()
+	start := time.Now()
 	if err := kbd.Press(ctx, "GUI r"); err != nil {
 		t.Fatalf("Press failed: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
 		t.Errorf("Expected Press(\"GUI r\") to hold and pause at least 60ms, took %v", elapsed)
 	}
-	data = buf.Bytes()
+	data := buf.Bytes()
 	// Modifier-only report (8B) + modifier+key report (8B) + release report (8B) = 24 bytes
 	if len(data) != 24 {
 		t.Fatalf("Expected 24 bytes for modifier+key Press, got %d", len(data))
 	}
-	if data[0] != ModLeftGUI || data[2] != 0 {
-		t.Errorf("Unexpected modifier lead report for 'GUI r': %v", data[:8])
-	}
-	if data[8] != ModLeftGUI || data[10] != KeyR {
-		t.Errorf("Unexpected combo report for 'GUI r': %v", data[8:16])
-	}
-	if data[16] != 0 || data[18] != 0 {
-		t.Errorf("Unexpected release report for 'GUI r': %v", data[16:24])
-	}
+	assertReport(t, data[0:8], ModLeftGUI, 0)
+	assertReport(t, data[8:16], ModLeftGUI, KeyR)
+	assertReport(t, data[16:24], 0, 0)
 
 	buf.Reset()
 	start = time.Now()
@@ -84,9 +88,7 @@ func TestKeyboard_TypeStringAndPress(t *testing.T) {
 	if len(data) != 16 {
 		t.Fatalf("Expected 16 bytes for single-key Press, got %d", len(data))
 	}
-	if data[0] != 0 || data[2] != KeyEnter {
-		t.Errorf("Unexpected report for 'ENTER': %v", data[:8])
-	}
+	assertReport(t, data[0:8], 0, KeyEnter)
 
 	buf.Reset()
 	if err := kbd.Press(ctx, "GUI"); err != nil {
@@ -96,9 +98,7 @@ func TestKeyboard_TypeStringAndPress(t *testing.T) {
 	if len(data) != 16 {
 		t.Fatalf("Expected 16 bytes for modifier-only Press, got %d", len(data))
 	}
-	if data[0] != ModLeftGUI || data[2] != 0 {
-		t.Errorf("Unexpected report for 'GUI': %v", data[:8])
-	}
+	assertReport(t, data[0:8], ModLeftGUI, 0)
 }
 
 func TestKeyboard_DevicePathAndClose(t *testing.T) {
