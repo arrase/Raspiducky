@@ -276,6 +276,16 @@ func TestGadgetManager_UpdateConfig_TypingDelayMs(t *testing.T) {
 	if delay != 35 || jitter != 0 {
 		t.Errorf("Expected keyboard typing speed (35, 0), got (%d, %d)", delay, jitter)
 	}
+
+	// Verify reloading from existing gadget_config.json without typingDelayMs preserves default 10ms
+	legacyJSON := `{"keyboard":true,"mouse":false,"vendorId":"0x1d6b","productId":"0x0104","manufacturer":"Raspiducky","product":"HID","serialNumber":"RPD-1","keyboardLayout":"US"}`
+	if err := os.WriteFile(filepath.Join(server.gadgetManager.storageDir, "gadget_config.json"), []byte(legacyJSON), 0644); err != nil {
+		t.Fatalf("WriteFile legacy gadget_config.json: %v", err)
+	}
+	reloadedGM := NewGadgetManager(server.hub, server.gadgetManager.keyboard, server.gadgetManager.mouse, server.gadgetManager.storageDir)
+	if reloadedGM.currentStatus.Config.TypingDelayMs != 10 {
+		t.Errorf("Expected default TypingDelayMs=10 when missing from saved config, got %d", reloadedGM.currentStatus.Config.TypingDelayMs)
+	}
 }
 
 func TestRunnerEngine_Run_TypingDelayMs(t *testing.T) {

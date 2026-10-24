@@ -121,6 +121,11 @@ func TestKeyboard_TypingSpeedAndCancel(t *testing.T) {
 
 	var buf bytes.Buffer
 	kbd.SetWriter(&buf)
+	kbd.SetTypingSpeed(5, 2)
+	if err := kbd.TypeString(context.Background(), "a"); err != nil {
+		t.Fatalf("TypeString with delay and jitter failed: %v", err)
+	}
+
 	kbd.SetTypingSpeed(500, 0)
 
 	ctxPress, cancelPress := context.WithTimeout(context.Background(), 30*time.Millisecond)
