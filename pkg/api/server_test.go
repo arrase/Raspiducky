@@ -249,3 +249,60 @@ func TestRunnerEngine_StopAndImmediateRestart_DoesNotOverwriteSecondJob(t *testi
 
 	_ = server.runnerEngine.Stop()
 }
+
+func TestGadgetManager_UpdateConfig_TypingDelayMs(t *testing.T) {
+	server := setupTestServer(t, nil)
+
+	status, err := server.gadgetManager.UpdateConfig(GadgetConfig{
+		Keyboard:       true,
+		Mouse:          false,
+		VendorID:       "0x1d6b",
+		ProductID:      "0x0104",
+		Manufacturer:   "Raspiducky Labs",
+		Product:        "Raspiducky HID",
+		SerialNumber:   "RPD-2026-0001",
+		KeyboardLayout: "US",
+		TypingDelayMs:  35,
+	})
+	if err != nil {
+		t.Fatalf("UpdateConfig failed: %v", err)
+	}
+
+	if status.Config.TypingDelayMs != 35 {
+		t.Errorf("Expected status.Config.TypingDelayMs=35, got %d", status.Config.TypingDelayMs)
+	}
+
+	delay, jitter := server.gadgetManager.keyboard.GetTypingSpeed()
+	if delay != 35 || jitter != 0 {
+		t.Errorf("Expected keyboard typing speed (35, 0), got (%d, %d)", delay, jitter)
+	}
+}
+
+func TestRunnerEngine_Run_TypingDelayMs(t *testing.T) {
+	server := setupTestServer(t, nil)
+
+	delayMs := 45
+	_, err := server.runnerEngine.Run(RunRequest{
+		Name:          "typing_delay.ducky",
+		Type:          "duckyscript",
+		Script:        "DELAY 10\n",
+		TypingDelayMs: &delayMs,
+	})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		job := server.runnerEngine.GetActiveJob()
+		if job != nil && job.Status == "completed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	delay, jitter := server.runnerEngine.keyboard.GetTypingSpeed()
+	if delay != 45 || jitter != 0 {
+		t.Errorf("Expected keyboard typing speed (45, 0), got (%d, %d)", delay, jitter)
+	}
+}

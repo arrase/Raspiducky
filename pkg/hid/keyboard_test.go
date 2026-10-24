@@ -3,9 +3,11 @@ package hid
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestKeyboard_TypeStringAndPress(t *testing.T) {
@@ -90,5 +92,46 @@ func TestKeyboard_DevicePathAndClose(t *testing.T) {
 	}
 	if len(b2) != 8 || b2[2] != KeyB {
 		t.Errorf("dev2 unexpected content: %v", b2)
+	}
+}
+
+func TestKeyboard_TypingSpeedAndCancel(t *testing.T) {
+	kbd, err := NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
+	}
+	defer kbd.Close()
+
+	delay, jitter := kbd.GetTypingSpeed()
+	if delay != 10 || jitter != 0 {
+		t.Errorf("Expected default (10, 0), got (%d, %d)", delay, jitter)
+	}
+
+	kbd.SetTypingSpeed(25, 5)
+	delay, jitter = kbd.GetTypingSpeed()
+	if delay != 25 || jitter != 5 {
+		t.Errorf("Expected (25, 5), got (%d, %d)", delay, jitter)
+	}
+
+	kbd.SetTypingSpeed(-5, -10)
+	delay, jitter = kbd.GetTypingSpeed()
+	if delay != 0 || jitter != 0 {
+		t.Errorf("Expected clamped (0, 0), got (%d, %d)", delay, jitter)
+	}
+
+	var buf bytes.Buffer
+	kbd.SetWriter(&buf)
+	kbd.SetTypingSpeed(500, 0)
+
+	ctxPress, cancelPress := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancelPress()
+	if err := kbd.Press(ctxPress, "ENTER"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Expected DeadlineExceeded in Press waitKeyDelay, got %v", err)
+	}
+
+	ctxType, cancelType := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancelType()
+	if err := kbd.TypeString(ctxType, "a"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Expected DeadlineExceeded in TypeString waitKeyDelay, got %v", err)
 	}
 }

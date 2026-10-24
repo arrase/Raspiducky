@@ -70,13 +70,15 @@ func printUsage() {
 	fmt.Println("  -port string     Port for Web Dashboard & API (default \":8000\")")
 	fmt.Println("  -storage string  Path to persistent storage directory (default \"/var/lib/raspiducky\")")
 	fmt.Println("  -layout string   Keyboard layout (US, ES, DE, FR) (default \"US\")")
+	fmt.Println("  -delay int       Keystroke typing delay in ms (default 10)")
 }
 
-func initHIDDevices(ctx context.Context, layout string) (*hid.Keyboard, *hid.Mouse, *hid.LEDWatcher, error) {
+func initHIDDevices(ctx context.Context, layout string, delayMs int) (*hid.Keyboard, *hid.Mouse, *hid.LEDWatcher, error) {
 	kbd, err := hid.NewKeyboard("/dev/hidg0", layout)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to initialize keyboard: %w", err)
 	}
+	kbd.SetTypingSpeed(delayMs, 0)
 
 	mouse := hid.NewMouse("/dev/hidg1")
 	ledWatcher := hid.NewLEDWatcher(ctx, "/dev/hidg0")
@@ -89,6 +91,7 @@ func runDaemon(args []string) error {
 	port := fs.String("port", ":8000", "Server port")
 	storageDir := fs.String("storage", "/var/lib/raspiducky", "Storage directory")
 	layout := fs.String("layout", "US", "Keyboard layout")
+	delay := fs.Int("delay", 10, "Keystroke typing delay in ms")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
@@ -98,7 +101,7 @@ func runDaemon(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout)
+	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout, *delay)
 	if err != nil {
 		return err
 	}
@@ -147,6 +150,7 @@ func runDaemon(args []string) error {
 func runScriptCLI(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	layout := fs.String("layout", "US", "Keyboard layout")
+	delay := fs.Int("delay", 10, "Keystroke typing delay in ms")
 
 	var filePath string
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -172,7 +176,7 @@ func runScriptCLI(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout)
+	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout, *delay)
 	if err != nil {
 		return err
 	}

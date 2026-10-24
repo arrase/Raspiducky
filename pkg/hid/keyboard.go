@@ -69,6 +69,34 @@ func (kbd *Keyboard) SetTypingSpeed(delayMs, jitterMs int) {
 	kbd.keyDelayJitterMs = jitterMs
 }
 
+// GetTypingSpeed returns the current inter-keystroke delay and random jitter in milliseconds.
+func (kbd *Keyboard) GetTypingSpeed() (int, int) {
+	kbd.mu.Lock()
+	defer kbd.mu.Unlock()
+	return kbd.keyDelayMs, kbd.keyDelayJitterMs
+}
+
+func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
+	kbd.mu.Lock()
+	delay := kbd.keyDelayMs
+	jitter := kbd.keyDelayJitterMs
+	kbd.mu.Unlock()
+
+	totalDelay := delay
+	if jitter > 0 {
+		totalDelay += rand.Intn(jitter)
+	}
+	if totalDelay <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Duration(totalDelay) * time.Millisecond):
+		return nil
+	}
+}
+
 // WriteReport writes an 8-byte KeyboardReport to the device in a thread-safe manner.
 func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
 	return kbd.hw.writeReport(report[:])
@@ -114,7 +142,10 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 	}
 
 	time.Sleep(10 * time.Millisecond)
-	return kbd.ReleaseKeys()
+	if err := kbd.ReleaseKeys(); err != nil {
+		return err
+	}
+	return kbd.waitKeyDelay(ctx)
 }
 
 // TypeString types out the given text string character by character according to the current layout and typing speed.
@@ -128,8 +159,6 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 
 		kbd.mu.Lock()
 		layout := kbd.layout
-		delay := kbd.keyDelayMs
-		jitter := kbd.keyDelayJitterMs
 		kbd.mu.Unlock()
 
 		report, ok := layout.Runes[r]
@@ -144,18 +173,8 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 		if err := kbd.ReleaseKeys(); err != nil {
 			return err
 		}
-
-		// Apply inter-keystroke delay
-		totalDelay := delay
-		if jitter > 0 {
-			totalDelay += rand.Intn(jitter)
-		}
-		if totalDelay > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(time.Duration(totalDelay) * time.Millisecond):
-			}
+		if err := kbd.waitKeyDelay(ctx); err != nil {
+			return err
 		}
 	}
 	return nil

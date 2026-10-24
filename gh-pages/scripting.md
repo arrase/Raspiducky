@@ -42,6 +42,7 @@ Raspiducky natively parses and executes standard Hak5 Rubber Ducky v1 syntax. Wh
 | `REM` | `REM This is a comment` | Comment line (ignored during execution). |
 | `DEFAULT_DELAY` / `DEFAULTDELAY` | `DEFAULTDELAY 100` | Sets default delay in milliseconds applied between every subsequent command. |
 | `DELAY` | `DELAY 500` | Pauses execution for the specified milliseconds. |
+| `TYPING_SPEED` | `TYPING_SPEED 20 5` | Sets inter-keystroke delay and optional random jitter in milliseconds. |
 | `STRING` | `STRING powershell.exe` | Types out text string using active keyboard layout. |
 | `STRINGLN` | `STRINGLN whoami` | Types out text string followed immediately by an `ENTER` keystroke. |
 | `ENTER` | `ENTER` | Presses the Enter / Return key. |
