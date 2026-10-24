@@ -90,22 +90,28 @@ func TestScriptEngine_DuckyScriptMinusKeyAndTrailingSpace(t *testing.T) {
 	}
 
 	data := kbdBuf.Bytes()
-	// 3 actions, each writes press (8 bytes) + release (8 bytes) = 48 bytes total
-	if len(data) != 48 {
-		t.Fatalf("expected 48 bytes of keyboard reports, got %d", len(data))
+	// 1st action ("-"): press + release = 16B
+	// 2nd action ("CTRL -"): mod + mod+key + release = 24B
+	// 3rd action ("STRING  "): press + release = 16B
+	// Total = 56 bytes
+	if len(data) != 56 {
+		t.Fatalf("expected 56 bytes of keyboard reports, got %d", len(data))
 	}
 
 	// 1st press: "-" -> KeyMinus, no modifiers
 	if data[0] != 0 || data[2] != hid.KeyMinus {
 		t.Errorf("expected '-' report (mod=0, key=KeyMinus), got (mod=0x%02x, key=0x%02x)", data[0], data[2])
 	}
-	// 2nd press (offset 16): "CTRL -" -> ModLeftCtrl + KeyMinus
-	if data[16] != hid.ModLeftCtrl || data[18] != hid.KeyMinus {
-		t.Errorf("expected 'CTRL -' report (mod=ModLeftCtrl, key=KeyMinus), got (mod=0x%02x, key=0x%02x)", data[16], data[18])
+	// 2nd press (offset 16): "CTRL -" -> modifier report first, then ModLeftCtrl + KeyMinus
+	if data[16] != hid.ModLeftCtrl || data[18] != 0 {
+		t.Errorf("expected 'CTRL -' modifier report (mod=ModLeftCtrl, key=0), got (mod=0x%02x, key=0x%02x)", data[16], data[18])
 	}
-	// 3rd press (offset 32): "STRING  " -> KeySpace
-	if data[32] != 0 || data[34] != hid.KeySpace {
-		t.Errorf("expected 'STRING  ' report (mod=0, key=KeySpace), got (mod=0x%02x, key=0x%02x)", data[32], data[34])
+	if data[24] != hid.ModLeftCtrl || data[26] != hid.KeyMinus {
+		t.Errorf("expected 'CTRL -' combo report (mod=ModLeftCtrl, key=KeyMinus), got (mod=0x%02x, key=0x%02x)", data[24], data[26])
+	}
+	// 3rd press (offset 40): "STRING  " -> KeySpace
+	if data[40] != 0 || data[42] != hid.KeySpace {
+		t.Errorf("expected 'STRING  ' report (mod=0, key=KeySpace), got (mod=0x%02x, key=0x%02x)", data[40], data[42])
 	}
 }
 

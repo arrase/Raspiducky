@@ -76,6 +76,11 @@ func (kbd *Keyboard) GetTypingSpeed() (int, int) {
 	return kbd.keyDelayMs, kbd.keyDelayJitterMs
 }
 
+const (
+	minKeyHoldDuration = 20 * time.Millisecond
+	minKeyDelayMs      = 20
+)
+
 func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
 	kbd.mu.Lock()
 	delay := kbd.keyDelayMs
@@ -83,11 +88,11 @@ func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
 	kbd.mu.Unlock()
 
 	totalDelay := delay
+	if totalDelay < minKeyDelayMs {
+		totalDelay = minKeyDelayMs
+	}
 	if jitter > 0 {
 		totalDelay += rand.Intn(jitter)
-	}
-	if totalDelay <= 0 {
-		return nil
 	}
 	select {
 	case <-ctx.Done():
@@ -136,12 +141,19 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 		}
 	}
 
+	if modifiers != 0 && len(keycodes) > 0 {
+		if err := kbd.WriteReport(NewKeyboardReport(modifiers)); err != nil {
+			return err
+		}
+		time.Sleep(minKeyHoldDuration)
+	}
+
 	report := NewKeyboardReport(modifiers, keycodes...)
 	if err := kbd.WriteReport(report); err != nil {
 		return err
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(minKeyHoldDuration)
 	if err := kbd.ReleaseKeys(); err != nil {
 		return err
 	}
@@ -169,7 +181,7 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 		if err := kbd.WriteReport(report); err != nil {
 			return err
 		}
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(minKeyHoldDuration)
 		if err := kbd.ReleaseKeys(); err != nil {
 			return err
 		}

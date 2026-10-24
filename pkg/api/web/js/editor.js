@@ -34,6 +34,10 @@ function insertSnippet(text) {
     const end = editor.selectionEnd;
     const val = editor.value;
 
+    if (text.endsWith('\n') && start > 0 && val[start - 1] !== '\n') {
+        text = '\n' + text;
+    }
+
     editor.value = val.substring(0, start) + text + val.substring(end);
     editor.selectionStart = editor.selectionEnd = start + text.length;
     editor.focus();
