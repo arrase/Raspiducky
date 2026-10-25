@@ -27,10 +27,13 @@ func TestParseDuckyScript_StringTrailingAndSingleSpaces(t *testing.T) {
 func TestParseDuckyScript_CaseInsensitiveAndRepeatDefaultDelay(t *testing.T) {
 	src := `rem initial comment
 default_delay 50
+LAYOUT ES
+TYPING_SPEED 15
 STRING a
 repeat 3
 STRINGLN b
 DELAY	200
+REPEAT 2
 STRING	tabbed
 `
 	js, err := ParseDuckyScript(src)
@@ -41,14 +44,16 @@ STRING	tabbed
 	expectedLines := []string{
 		`// initial comment`,
 		`// Default delay set to 50 ms`,
+		`layout("ES");`,
+		`typingSpeed(15, 0);`,
 		`type("a");`,
 		`delay(50);`,
 		`for (let _i = 0; _i < 3; _i++) { type("a"); delay(50); }`,
 		`type("b");`,
-		`delay(50);`,
 		`press("ENTER");`,
 		`delay(50);`,
 		`delay(200);`,
+		`for (let _i = 0; _i < 2; _i++) { delay(200); }`,
 		`type("tabbed");`,
 		`delay(50);`,
 	}
@@ -115,6 +120,11 @@ func TestParseDuckyScript_Errors(t *testing.T) {
 			wantSub: "line 2",
 		},
 		{
+			name:    "repeat after layout directive without action command",
+			src:     "LAYOUT ES\nREPEAT 2",
+			wantSub: "line 2",
+		},
+		{
 			name:    "repeat missing count",
 			src:     "ENTER\nREPEAT",
 			wantSub: "line 2",
@@ -128,6 +138,31 @@ func TestParseDuckyScript_Errors(t *testing.T) {
 			name:    "repeat negative count",
 			src:     "ENTER\nREPEAT -3",
 			wantSub: "line 2",
+		},
+		{
+			name:    "repeat extra token",
+			src:     "ENTER\nREPEAT 2 ENTER",
+			wantSub: "line 2",
+		},
+		{
+			name:    "mouse_move invalid x",
+			src:     "MOUSE_MOVE abc 10",
+			wantSub: "line 1",
+		},
+		{
+			name:    "mouse_moveto missing y",
+			src:     "MOUSE_MOVETO 100",
+			wantSub: "line 1",
+		},
+		{
+			name:    "wait_led invalid timeout",
+			src:     "WAIT_LED CAPS abc",
+			wantSub: "line 1",
+		},
+		{
+			name:    "typing_speed invalid arg",
+			src:     "TYPING_SPEED abc",
+			wantSub: "line 1",
 		},
 	}
 
@@ -148,6 +183,8 @@ func TestParseDuckyScript_KeyCombosAndMinus(t *testing.T) {
 	src := strings.Join([]string{
 		"-",
 		"CTRL -",
+		"ALT--",
+		"CTRL-ALT--",
 		"CTRL-ALT-DELETE",
 		"CTRL-S",
 		"GUI r",
@@ -161,6 +198,8 @@ func TestParseDuckyScript_KeyCombosAndMinus(t *testing.T) {
 	expectedLines := []string{
 		`press("-");`,
 		`press("CTRL -");`,
+		`press("ALT -");`,
+		`press("CTRL ALT -");`,
 		`press("CTRL ALT DELETE");`,
 		`press("CTRL S");`,
 		`press("GUI r");`,

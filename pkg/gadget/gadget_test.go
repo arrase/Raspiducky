@@ -10,32 +10,11 @@ import (
 
 func setupMockHardware(t *testing.T, maxEndpoints string) *GadgetManager {
 	t.Helper()
-	tmpDir := t.TempDir()
-
-	baseDir := filepath.Join(tmpDir, "usb_gadget")
-	udcDir := filepath.Join(tmpDir, "udc")
-	debugFSDir := filepath.Join(tmpDir, "debugfs")
-
-	if err := os.MkdirAll(udcDir, 0755); err != nil {
-		t.Fatalf("failed to create udc dir: %v", err)
+	gm, err := NewMockGadgetManager(t.TempDir(), maxEndpoints)
+	if err != nil {
+		t.Fatalf("failed to create mock gadget manager: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(udcDir, "dummy.udc"), []byte(""), 0644); err != nil {
-		t.Fatalf("failed to create dummy udc: %v", err)
-	}
-
-	udcDebugDir := filepath.Join(debugFSDir, "dummy.udc")
-	if err := os.MkdirAll(udcDebugDir, 0755); err != nil {
-		t.Fatalf("failed to create debugfs dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(udcDebugDir, "hw_params"), []byte("num_dev_ep: "+maxEndpoints+"\n"), 0644); err != nil {
-		t.Fatalf("failed to write hw_params: %v", err)
-	}
-
-	return NewGadgetManager(
-		WithBaseDir(baseDir),
-		WithUDCDir(udcDir),
-		WithDebugFSDir(debugFSDir),
-	)
+	return gm
 }
 
 func validTestConfig() Config {
@@ -130,9 +109,6 @@ func TestDestroyGadgetUnlocked_TeardownOrder(t *testing.T) {
 	cfgDir := filepath.Join(configsParent, "c.1")
 	osDescLink := filepath.Join(gadgetPath, "os_desc", "c.1")
 
-	// Make configs/ read-only so removing configs/c.1 (Step 4) fails.
-	// This allows us to verify that Step 1 (unbind UDC), Step 2 (unlink os_desc/c.1),
-	// and Step 3 (unlink function symlinks in configs/c.1) all happen BEFORE configs/c.1 is removed.
 	if err := os.Chmod(configsParent, 0555); err != nil {
 		t.Fatalf("chmod configs parent failed: %v", err)
 	}
@@ -140,7 +116,7 @@ func TestDestroyGadgetUnlocked_TeardownOrder(t *testing.T) {
 		_ = os.Chmod(configsParent, 0755)
 	}()
 
-	err := gm.destroyGadgetUnlocked(gadgetPath)
+	err := gm.destroyGadgetUnlocked(ctx, gadgetPath)
 	if err == nil {
 		t.Fatal("expected error when configs/c.1 cannot be removed")
 	}
@@ -167,7 +143,7 @@ func TestDestroyGadgetUnlocked_TeardownOrder(t *testing.T) {
 }
 
 func TestDeploy_EndpointLimitExceeded(t *testing.T) {
-	gm := setupMockHardware(t, "2")
+	gm := setupMockHardware(t, "4")
 	ctx := context.Background()
 
 	cfg := validTestConfig()
@@ -177,8 +153,39 @@ func TestDeploy_EndpointLimitExceeded(t *testing.T) {
 		DevAddr:  "02:00:00:00:00:02",
 	}
 
+	// EP0(1) + Keyboard(1) + Mouse(1) + RNDIS(3) = 6 > 4
 	if err := gm.Deploy(ctx, cfg); err == nil {
-		t.Fatal("expected error when configuration exceeds hardware IN endpoint limit")
+		t.Fatal("expected error when configuration exceeds hardware endpoint limit")
+	}
+}
+
+func TestDeploy_NonDWC2ControllerWithoutHwParams(t *testing.T) {
+	gm := setupMockHardware(t, "")
+	ctx := context.Background()
+
+	// Without debugfs hw_params or sysfs ep* dirs, GetMaxEndpoints returns 0,
+	// and Deploy should still succeed rather than failing on missing dwc2 debugfs.
+	if maxEP, err := gm.GetMaxEndpoints(); err != nil || maxEP != 0 {
+		t.Fatalf("expected maxEP=0 err=nil for unknown UDC, got maxEP=%d err=%v", maxEP, err)
+	}
+
+	cfg := validTestConfig()
+	if err := gm.Deploy(ctx, cfg); err != nil {
+		t.Fatalf("expected Deploy to succeed on non-dwc2 UDC without hw_params, got: %v", err)
+	}
+}
+
+func TestConfig_CountEndpoints(t *testing.T) {
+	cfg := validTestConfig()
+	cfg.MassStorage.Enabled = true
+	cfg.MassStorage.BackingFile = "/tmp/disk.img"
+	cfg.RNDIS.Enabled = true
+	cfg.RNDIS.HostAddr = "02:00:00:00:00:01"
+	cfg.RNDIS.DevAddr = "02:00:00:00:00:02"
+
+	// EP0(1) + Keyboard(1) + Mouse(1) + MassStorage(2) + RNDIS(3) = 8
+	if got := cfg.CountEndpoints(); got != 8 {
+		t.Errorf("expected CountEndpoints()=8, got %d", got)
 	}
 }
 

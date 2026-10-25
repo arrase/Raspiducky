@@ -16,8 +16,8 @@
     --text-muted: #8a99ad;
     --text-dim: #5c6b7d;
     
-    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-code: 'JetBrains Mono', monospace;
+    --font-ui: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-code: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
     
     --radius-sm: 6px;
     --radius-md: 12px;
@@ -521,6 +521,12 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
     color: var(--accent-green);
     border: 1px solid var(--accent-green);
     animation: pulse 1.5s infinite;
+}
+
+.job-status-pill.failed {
+    background: rgba(255, 51, 102, 0.2);
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
 }
 
 .editor-split {

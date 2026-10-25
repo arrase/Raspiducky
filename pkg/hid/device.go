@@ -9,15 +9,15 @@ import (
 )
 
 type hidWriter struct {
-	mu         sync.Mutex
+	wmu        sync.Mutex
 	devicePath string
 	writer     io.Writer
 	file       *os.File
 }
 
 func (w *hidWriter) writeReport(report []byte) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
 
 	if w.writer == nil && w.devicePath != "" {
 		f, err := os.OpenFile(w.devicePath, os.O_WRONLY|os.O_SYNC, 0666)
@@ -47,9 +47,10 @@ func (w *hidWriter) writeReport(report []byte) error {
 	return nil
 }
 
-func (w *hidWriter) setWriter(out io.Writer) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+// SetWriter overrides the output writer (useful for testing or custom pipes).
+func (w *hidWriter) SetWriter(out io.Writer) {
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
 
 	if w.file != nil {
 		_ = w.file.Close()
@@ -58,9 +59,10 @@ func (w *hidWriter) setWriter(out io.Writer) {
 	w.writer = out
 }
 
-func (w *hidWriter) setDevicePath(path string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+// SetDevicePath updates the target HID device path.
+func (w *hidWriter) SetDevicePath(path string) {
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
 
 	if path == w.devicePath {
 		return
@@ -68,14 +70,22 @@ func (w *hidWriter) setDevicePath(path string) {
 	if w.file != nil {
 		_ = w.file.Close()
 		w.file = nil
+		w.writer = nil
 	}
-	w.writer = nil
 	w.devicePath = path
 }
 
-func (w *hidWriter) close() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+// DevicePath returns the currently configured HID device path.
+func (w *hidWriter) DevicePath() string {
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
+	return w.devicePath
+}
+
+// Close closes the underlying device file if owned by this HID device.
+func (w *hidWriter) Close() error {
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
 
 	if w.file != nil {
 		err := w.file.Close()

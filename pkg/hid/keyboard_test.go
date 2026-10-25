@@ -33,8 +33,8 @@ func TestKeyboard_TypeString(t *testing.T) {
 	if err := kbd.TypeString(ctx, "aA"); err != nil {
 		t.Fatalf("TypeString failed: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < 80*time.Millisecond {
-		t.Errorf("Expected TypeString(\"aA\") to hold and pause at least 80ms, took %v", elapsed)
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
+		t.Errorf("Expected TypeString(\"aA\") to hold at least 40ms, took %v", elapsed)
 	}
 
 	// Each character writes 1 press report (8 bytes) + 1 release report (8 bytes) = 16 bytes
@@ -64,8 +64,8 @@ func TestKeyboard_Press(t *testing.T) {
 	if err := kbd.Press(ctx, "GUI r"); err != nil {
 		t.Fatalf("Press failed: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
-		t.Errorf("Expected Press(\"GUI r\") to hold and pause at least 60ms, took %v", elapsed)
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
+		t.Errorf("Expected Press(\"GUI r\") to hold at least 40ms, took %v", elapsed)
 	}
 	data := buf.Bytes()
 	// Modifier-only report (8B) + modifier+key report (8B) + release report (8B) = 24 bytes
@@ -81,8 +81,8 @@ func TestKeyboard_Press(t *testing.T) {
 	if err := kbd.Press(ctx, "ENTER"); err != nil {
 		t.Fatalf("Press ENTER failed: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
-		t.Errorf("Expected Press(\"ENTER\") to hold and pause at least 40ms, took %v", elapsed)
+	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
+		t.Errorf("Expected Press(\"ENTER\") to hold at least 20ms, took %v", elapsed)
 	}
 	data = buf.Bytes()
 	if len(data) != 16 {

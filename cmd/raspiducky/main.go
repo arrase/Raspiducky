@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -43,7 +46,6 @@ func main() {
 	case "help", "-h", "--help":
 		printUsage()
 	default:
-		// Default to running daemon if first arg looks like a flag
 		if len(command) > 0 && command[0] == '-' {
 			if err := runDaemon(os.Args[1:]); err != nil {
 				log.Fatalf("Error: %v", err)
@@ -62,7 +64,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  raspiducky daemon [flags]      Start the background server & web dashboard")
-	fmt.Println("  raspiducky run <file> [flags]  Execute a script (DuckyScript .txt or JS .js)")
+	fmt.Println("  raspiducky run <file> [flags]  Execute a script (DuckyScript .ducky/.txt or JS .js)")
 	fmt.Println("  raspiducky version             Print version information")
 	fmt.Println("  raspiducky help                Show this help message")
 	fmt.Println()
@@ -96,6 +98,17 @@ func runDaemon(args []string) error {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
 
+	var optLayout string
+	var optDelay int
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "layout":
+			optLayout = *layout
+		case "delay":
+			optDelay = *delay
+		}
+	})
+
 	log.Printf("Starting Raspiducky Daemon %s on %s...", version, *port)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -110,18 +123,22 @@ func runDaemon(args []string) error {
 	defer ledWatcher.Close()
 
 	server, err := api.NewServer(api.ServerOptions{
-		StorageDir: *storageDir,
-		Keyboard:   kbd,
-		Mouse:      mouse,
-		LEDWatcher: ledWatcher,
+		StorageDir:     *storageDir,
+		Keyboard:       kbd,
+		Mouse:          mouse,
+		LEDWatcher:     ledWatcher,
+		KeyboardLayout: optLayout,
+		TypingDelayMs:  optDelay,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize server: %w", err)
 	}
+	defer server.Close()
 
 	httpServer := &http.Server{
-		Addr:    *port,
-		Handler: server.Handler(),
+		Addr:              *port,
+		Handler:           server.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {
@@ -151,6 +168,7 @@ func runScriptCLI(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	layout := fs.String("layout", "US", "Keyboard layout")
 	delay := fs.Int("delay", 10, "Keystroke typing delay in ms")
+	serverURL := fs.String("server", "http://127.0.0.1:8000", "Daemon API URL")
 
 	var filePath string
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -168,6 +186,17 @@ func runScriptCLI(args []string) error {
 		return errors.New("usage: raspiducky run <script-file>")
 	}
 
+	var optLayout string
+	var optDelay int
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "layout":
+			optLayout = *layout
+		case "delay":
+			optDelay = *delay
+		}
+	})
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("reading script file %s: %w", filePath, err)
@@ -175,6 +204,14 @@ func runScriptCLI(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if handled, err := runViaDaemon(ctx, strings.TrimRight(*serverURL, "/"), filepath.Base(filePath), string(content), optLayout, optDelay); handled {
+		if err != nil {
+			return err
+		}
+		log.Println("Script execution finished cleanly via daemon.")
+		return nil
+	}
 
 	kbd, mouse, ledWatcher, err := initHIDDevices(ctx, *layout, *delay)
 	if err != nil {
@@ -186,17 +223,133 @@ func runScriptCLI(args []string) error {
 	defer func() { _ = kbd.ReleaseKeys() }()
 
 	engine := scripting.NewScriptEngine(kbd, mouse, ledWatcher)
-
-	ext := strings.ToLower(filepath.Ext(filePath))
-	if ext == ".txt" || ext == ".ducky" {
-		err = engine.RunDuckyScript(ctx, string(content), os.Stdout)
-	} else {
-		err = engine.RunJS(ctx, string(content), os.Stdout)
-	}
-	if err != nil {
+	if err := engine.Run(ctx, "", filePath, string(content), os.Stdout); err != nil {
 		return err
 	}
 
 	log.Println("Script execution finished cleanly.")
 	return nil
+}
+
+func stopDaemonJob(client *http.Client, baseURL string) {
+	stopReq, err := http.NewRequest(http.MethodPost, baseURL+"/api/stop", bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return
+	}
+	stopReq.Header.Set("Content-Type", "application/json")
+	if resp, stopErr := client.Do(stopReq); stopErr == nil {
+		_ = resp.Body.Close()
+	}
+}
+
+func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, delayMs int) (bool, error) {
+	if baseURL == "" {
+		return false, nil
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{Timeout: 500 * time.Millisecond}).DialContext,
+		},
+		Timeout: 5 * time.Second,
+	}
+
+	probeReq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/job", nil)
+	if err != nil {
+		return false, nil
+	}
+	probeResp, err := client.Do(probeReq)
+	if err != nil {
+		return false, nil
+	}
+	_ = probeResp.Body.Close()
+	if probeResp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+
+	reqBody, err := json.Marshal(api.RunRequest{
+		Script:        content,
+		Name:          name,
+		Type:          scripting.DetectScriptType("", name),
+		TypingDelayMs: delayMs,
+		Layout:        layout,
+	})
+	if err != nil {
+		return true, err
+	}
+
+	runReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/run", bytes.NewReader(reqBody))
+	if err != nil {
+		return true, err
+	}
+	runReq.Header.Set("Content-Type", "application/json")
+
+	runResp, err := client.Do(runReq)
+	if err != nil {
+		return true, err
+	}
+	defer runResp.Body.Close()
+
+	if runResp.StatusCode != http.StatusOK {
+		var errPayload map[string]string
+		_ = json.NewDecoder(runResp.Body).Decode(&errPayload)
+		if msg := errPayload["error"]; msg != "" {
+			return true, errors.New(msg)
+		}
+		return true, fmt.Errorf("daemon returned status %d", runResp.StatusCode)
+	}
+
+	var startPayload struct {
+		JobID string `json:"jobId"`
+	}
+	if err := json.NewDecoder(runResp.Body).Decode(&startPayload); err != nil {
+		return true, err
+	}
+
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			stopDaemonJob(client, baseURL)
+			return true, ctx.Err()
+
+		case <-ticker.C:
+			statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/job", nil)
+			if err != nil {
+				if ctx.Err() != nil {
+					stopDaemonJob(client, baseURL)
+					return true, ctx.Err()
+				}
+				return true, err
+			}
+			statusResp, err := client.Do(statusReq)
+			if err != nil {
+				if ctx.Err() != nil {
+					stopDaemonJob(client, baseURL)
+					return true, ctx.Err()
+				}
+				return true, err
+			}
+			var job *api.JobStatus
+			decodeErr := json.NewDecoder(statusResp.Body).Decode(&job)
+			_ = statusResp.Body.Close()
+			if decodeErr != nil || job == nil || job.ID != startPayload.JobID {
+				continue
+			}
+
+			switch job.Status {
+			case "completed":
+				return true, nil
+			case "failed":
+				if job.Error != "" {
+					return true, errors.New(job.Error)
+				}
+				return true, errors.New("script execution failed on daemon")
+			case "stopped":
+				return true, context.Canceled
+			}
+		}
+	}
 }

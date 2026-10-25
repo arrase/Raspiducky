@@ -47,9 +47,13 @@ function insertSnippet(text) {
 function onScriptFormatChange() {
     const formatSelect = document.getElementById('script-format');
     const titleInput = document.getElementById('script-title');
+    const name = titleInput.value.trim();
 
+    if (formatSelect.value !== 'javascript' && /\.txt$/i.test(name)) {
+        return;
+    }
     const currentExt = formatSelect.value === 'javascript' ? '.js' : '.ducky';
-    let baseName = titleInput.value.replace(/\.(ducky|txt|js)$/i, '');
+    let baseName = name.replace(/\.(ducky|txt|js)$/i, '');
     if (!baseName) baseName = 'untitled_payload';
     titleInput.value = baseName + currentExt;
 }
@@ -87,7 +91,8 @@ async function runScript() {
             updateJobStatusUI({
                 id: response.jobId,
                 name,
-                status: 'RUNNING'
+                status: 'RUNNING',
+                startedAt: new Date().toISOString()
             });
         }
     } catch (err) {
@@ -121,6 +126,7 @@ function updateJobStatusUI(job) {
     const pill = document.getElementById('job-status-pill');
     const idDisp = document.getElementById('job-id-display');
     const nameDisp = document.getElementById('job-name-display');
+    const timerDisp = document.getElementById('job-timer-display');
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
 
@@ -132,9 +138,22 @@ function updateJobStatusUI(job) {
             state.lastTerminalJobId = job.id;
         }
         clearJobTimer();
-        jobBar.classList.add('hidden');
         runBtn.disabled = false;
         stopBtn.disabled = true;
+
+        if (status === 'FAILED') {
+            jobBar.classList.remove('hidden');
+            pill.textContent = status;
+            pill.className = 'job-status-pill failed';
+            idDisp.textContent = `Job ID: ${job.id || '---'}`;
+            nameDisp.textContent = job.error ? `Error: ${job.error}` : `Script: ${job.name || '---'}`;
+            if (job.startedAt && job.finishedAt) {
+                const dur = Math.max(0, (Date.parse(job.finishedAt) - Date.parse(job.startedAt)) / 1000).toFixed(1);
+                timerDisp.textContent = `Duration: ${dur}s`;
+            }
+        } else {
+            jobBar.classList.add('hidden');
+        }
         state.jobStartTime = null;
         return;
     }
@@ -148,15 +167,23 @@ function updateJobStatusUI(job) {
     runBtn.disabled = true;
     stopBtn.disabled = false;
 
-    // Only start the timer once per job
+    if (job.startedAt) {
+        const parsed = Date.parse(job.startedAt);
+        if (!Number.isNaN(parsed)) {
+            state.jobStartTime = parsed;
+        }
+    }
     if (!state.jobStartTime) {
         state.jobStartTime = Date.now();
     }
+
+    const updateTimerText = () => {
+        const elapsed = Math.max(0, (Date.now() - state.jobStartTime) / 1000).toFixed(1);
+        timerDisp.textContent = `Duration: ${elapsed}s`;
+    };
+    updateTimerText();
     clearJobTimer();
-    state.jobTimerInterval = setInterval(() => {
-        const elapsed = ((Date.now() - state.jobStartTime) / 1000).toFixed(1);
-        document.getElementById('job-timer-display').textContent = `Duration: ${elapsed}s`;
-    }, 100);
+    state.jobTimerInterval = setInterval(updateTimerText, 100);
 }
 
 // Live Console Output Terminal
@@ -319,8 +346,7 @@ async function saveCurrentScript() {
     const payload = {
         name,
         type,
-        content,
-        description: `Saved payload (${type})`
+        content
     };
 
     try {

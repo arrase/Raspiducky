@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -66,50 +67,58 @@ var (
 )
 
 type GadgetManager struct {
-	baseDir    string
-	udcDir     string
-	debugFSDir string
+	BaseDir    string
+	UDCDir     string
+	DebugFSDir string
 	mu         sync.Mutex
 }
 
-type Option func(*GadgetManager)
-
-func WithBaseDir(dir string) Option {
-	return func(gm *GadgetManager) {
-		gm.baseDir = dir
+func NewGadgetManager() *GadgetManager {
+	return &GadgetManager{
+		BaseDir:    DefaultBaseDir,
+		UDCDir:     DefaultUDCDir,
+		DebugFSDir: DefaultDebugFSDir,
 	}
 }
 
-func WithUDCDir(dir string) Option {
-	return func(gm *GadgetManager) {
-		gm.udcDir = dir
-	}
-}
+// NewMockGadgetManager creates a mock UDC, debugfs, and usb_gadget hierarchy under rootDir for testing.
+func NewMockGadgetManager(rootDir, maxEndpoints string) (*GadgetManager, error) {
+	baseDir := filepath.Join(rootDir, "usb_gadget")
+	udcDir := filepath.Join(rootDir, "udc")
+	debugFSDir := filepath.Join(rootDir, "debugfs")
 
-func WithDebugFSDir(dir string) Option {
-	return func(gm *GadgetManager) {
-		gm.debugFSDir = dir
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return nil, err
 	}
-}
+	if err := os.MkdirAll(udcDir, 0755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(udcDir, "dummy.udc"), []byte(""), 0644); err != nil {
+		return nil, err
+	}
+	if maxEndpoints != "" {
+		udcDebugDir := filepath.Join(debugFSDir, "dummy.udc")
+		if err := os.MkdirAll(udcDebugDir, 0755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(udcDebugDir, "hw_params"), []byte("num_dev_ep: "+maxEndpoints+"\n"), 0644); err != nil {
+			return nil, err
+		}
+	}
 
-func NewGadgetManager(opts ...Option) *GadgetManager {
-	gm := &GadgetManager{
-		baseDir:    DefaultBaseDir,
-		udcDir:     DefaultUDCDir,
-		debugFSDir: DefaultDebugFSDir,
-	}
-	for _, opt := range opts {
-		opt(gm)
-	}
-	return gm
+	return &GadgetManager{
+		BaseDir:    baseDir,
+		UDCDir:     udcDir,
+		DebugFSDir: debugFSDir,
+	}, nil
 }
 
 func (gm *GadgetManager) GadgetPath() string {
-	return filepath.Join(gm.baseDir, DefaultGadgetName)
+	return filepath.Join(gm.BaseDir, DefaultGadgetName)
 }
 
 func (gm *GadgetManager) GetUDCName() (string, error) {
-	entries, err := os.ReadDir(gm.udcDir)
+	entries, err := os.ReadDir(gm.UDCDir)
 	if err != nil || len(entries) == 0 {
 		return "", ErrUDCNotFound
 	}
@@ -122,32 +131,61 @@ func (gm *GadgetManager) GetMaxEndpoints() (int, error) {
 		return 0, fmt.Errorf("failed to get UDC name: %w", err)
 	}
 
-	hwParamsPath := filepath.Join(gm.debugFSDir, udcName, "hw_params")
+	hwParamsPath := filepath.Join(gm.DebugFSDir, udcName, "hw_params")
 	data, err := os.ReadFile(hwParamsPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read hw_params (is debugfs mounted at /sys/kernel/debug?): %w", err)
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "num_dev_ep") {
+				parts := strings.Split(line, ":")
+				if len(parts) == 2 {
+					val, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+					if err != nil {
+						return 0, fmt.Errorf("invalid num_dev_ep value format: %w", err)
+					}
+					return val, nil
+				}
+			}
+		}
+		return 0, errors.New("num_dev_ep not found in hw_params")
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "num_dev_ep") {
-			parts := strings.Split(line, ":")
-			if len(parts) == 2 {
-				val, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-				if err != nil {
-					return 0, fmt.Errorf("invalid num_dev_ep value format: %w", err)
+	if !os.IsNotExist(err) {
+		return 0, fmt.Errorf("failed to read hw_params: %w", err)
+	}
+
+	// Non-dwc2 controllers (dwc3, sunxi-musb, dummy_hcd) do not expose dwc2 hw_params.
+	// Check sysfs /sys/class/udc/<udc>/ep* if directory entries exist; otherwise return 0 (no fixed dwc2 limit).
+	udcSysPath := filepath.Join(gm.UDCDir, udcName)
+	if entries, readErr := os.ReadDir(udcSysPath); readErr == nil {
+		epCount := 0
+		hasEP0 := false
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), "ep") {
+				epCount++
+				if e.Name() == "ep0" {
+					hasEP0 = true
 				}
-				return val, nil
 			}
+		}
+		if epCount > 0 {
+			if !hasEP0 {
+				epCount++
+			}
+			return epCount, nil
 		}
 	}
 
-	return 0, errors.New("num_dev_ep not found in hw_params")
+	return 0, nil
 }
 
-func (gm *GadgetManager) validateAndCheckHardware(cfg Config) error {
+// ValidateHardware validates the configuration and verifies UDC availability and hardware endpoint limits.
+func (gm *GadgetManager) ValidateHardware(cfg Config) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid gadget config: %w", err)
+	}
+
+	if _, err := gm.GetUDCName(); err != nil {
+		return fmt.Errorf("critical: %w", err)
 	}
 
 	maxEp, err := gm.GetMaxEndpoints()
@@ -155,32 +193,38 @@ func (gm *GadgetManager) validateAndCheckHardware(cfg Config) error {
 		return fmt.Errorf("critical: cannot verify hardware endpoint limits: %w", err)
 	}
 
-	if epCount := cfg.CountINEndpoints(); epCount > maxEp {
-		return fmt.Errorf("configuration requires %d IN endpoints, but the hardware only supports max %d", epCount, maxEp)
+	if maxEp > 0 {
+		if epCount := cfg.CountEndpoints(); epCount > maxEp {
+			return fmt.Errorf("configuration requires %d endpoints, but the hardware only supports max %d", epCount, maxEp)
+		}
+	}
+	return nil
+}
+
+type attr struct {
+	name string
+	val  string
+}
+
+func writeAttrs(dir string, attrs ...attr) error {
+	for _, a := range attrs {
+		if err := os.WriteFile(filepath.Join(dir, a.name), []byte(a.val), 0644); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (gm *GadgetManager) writeBaseAttributes(gadgetPath string, cfg Config) error {
-	writes := []struct {
-		relPath string
-		val     string
-	}{
-		{"idVendor", cfg.VID},
-		{"idProduct", cfg.PID},
-		{"bcdUSB", DefaultBcdUSB},
-		{"bcdDevice", DefaultBcdDevice},
-		{"bDeviceClass", DefaultBDeviceClass},
-		{"bDeviceSubClass", DefaultBDeviceSubClass},
-		{"bDeviceProtocol", DefaultBDeviceProtocol},
-	}
-
-	for _, w := range writes {
-		if err := os.WriteFile(filepath.Join(gadgetPath, w.relPath), []byte(w.val), 0644); err != nil {
-			return err
-		}
-	}
-	return nil
+	return writeAttrs(gadgetPath,
+		attr{"idVendor", cfg.VID},
+		attr{"idProduct", cfg.PID},
+		attr{"bcdUSB", DefaultBcdUSB},
+		attr{"bcdDevice", DefaultBcdDevice},
+		attr{"bDeviceClass", DefaultBDeviceClass},
+		attr{"bDeviceSubClass", DefaultBDeviceSubClass},
+		attr{"bDeviceProtocol", DefaultBDeviceProtocol},
+	)
 }
 
 func (gm *GadgetManager) writeStringDescriptors(gadgetPath string, cfg Config) error {
@@ -188,20 +232,11 @@ func (gm *GadgetManager) writeStringDescriptors(gadgetPath string, cfg Config) e
 	if err := os.MkdirAll(strDir, 0755); err != nil {
 		return fmt.Errorf("failed creating strings dir: %w", err)
 	}
-	strWrites := []struct {
-		name string
-		val  string
-	}{
-		{"serialnumber", cfg.Serial},
-		{"manufacturer", cfg.Manufacturer},
-		{"product", cfg.Product},
-	}
-	for _, w := range strWrites {
-		if err := os.WriteFile(filepath.Join(strDir, w.name), []byte(w.val), 0644); err != nil {
-			return err
-		}
-	}
-	return nil
+	return writeAttrs(strDir,
+		attr{"serialnumber", cfg.Serial},
+		attr{"manufacturer", cfg.Manufacturer},
+		attr{"product", cfg.Product},
+	)
 }
 
 func (gm *GadgetManager) setupConfigNode(gadgetPath string) (string, error) {
@@ -210,13 +245,13 @@ func (gm *GadgetManager) setupConfigNode(gadgetPath string) (string, error) {
 	if err := os.MkdirAll(cfgStrDir, 0755); err != nil {
 		return "", fmt.Errorf("failed creating config string dir: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(cfgStrDir, "configuration"), []byte("Config 1: Composite"), 0644); err != nil {
+	if err := writeAttrs(cfgStrDir, attr{"configuration", "Config 1: Composite"}); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(cfgDir, "MaxPower"), []byte(DefaultMaxPower), 0644); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(filepath.Join(cfgDir, "bmAttributes"), []byte(DefaultBmAttributes), 0644); err != nil {
+	if err := writeAttrs(cfgDir,
+		attr{"MaxPower", DefaultMaxPower},
+		attr{"bmAttributes", DefaultBmAttributes},
+	); err != nil {
 		return "", err
 	}
 	return cfgDir, nil
@@ -286,17 +321,29 @@ func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
-	if err := gm.validateAndCheckHardware(cfg); err != nil {
+	if err := gm.ValidateHardware(cfg); err != nil {
 		return err
 	}
 
+	return gm.deployValidatedUnlocked(ctx, cfg)
+}
+
+// DeployValidated deploys a configuration that has already been validated by ValidateHardware.
+func (gm *GadgetManager) DeployValidated(ctx context.Context, cfg Config) error {
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
+
+	return gm.deployValidatedUnlocked(ctx, cfg)
+}
+
+func (gm *GadgetManager) deployValidatedUnlocked(ctx context.Context, cfg Config) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
 	gadgetPath := gm.GadgetPath()
 	// Always teardown any active gadget before deploying new configuration
-	if err := gm.destroyGadgetUnlocked(gadgetPath); err != nil {
+	if err := gm.destroyGadgetUnlocked(ctx, gadgetPath); err != nil {
 		return fmt.Errorf("failed tearing down old gadget: %w", err)
 	}
 
@@ -329,13 +376,11 @@ func (gm *GadgetManager) setupHID(gadgetPath, cfgDir, name, protocol, reportLen 
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
 		return fmt.Errorf("failed creating %s function: %w", name, err)
 	}
-	if err := os.WriteFile(filepath.Join(funcDir, "protocol"), []byte(protocol), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(funcDir, "subclass"), []byte("1"), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(funcDir, "report_length"), []byte(reportLen), 0644); err != nil {
+	if err := writeAttrs(funcDir,
+		attr{"protocol", protocol},
+		attr{"subclass", "1"},
+		attr{"report_length", reportLen},
+	); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(funcDir, "report_desc"), reportDesc, 0644); err != nil {
@@ -350,7 +395,7 @@ func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStor
 	if err := os.MkdirAll(lunDir, 0755); err != nil {
 		return fmt.Errorf("failed creating %s lun.0: %w", FuncMassStorage, err)
 	}
-	if err := os.WriteFile(filepath.Join(funcDir, "stall"), []byte("1"), 0644); err != nil {
+	if err := writeAttrs(funcDir, attr{"stall", "1"}); err != nil {
 		return err
 	}
 	cdromVal := "0"
@@ -362,33 +407,35 @@ func (gm *GadgetManager) setupMassStorage(gadgetPath, cfgDir string, ms MassStor
 		roVal = "1"
 	}
 
-	if err := os.WriteFile(filepath.Join(lunDir, "cdrom"), []byte(cdromVal), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(lunDir, "ro"), []byte(roVal), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(lunDir, "removable"), []byte("1"), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(lunDir, "nofua"), []byte("0"), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(lunDir, "file"), []byte(ms.BackingFile), 0644); err != nil {
+	if err := writeAttrs(lunDir,
+		attr{"cdrom", cdromVal},
+		attr{"ro", roVal},
+		attr{"removable", "1"},
+		attr{"nofua", "0"},
+		attr{"file", ms.BackingFile},
+	); err != nil {
 		return err
 	}
 	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncMassStorage))
 }
 
-func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetConfig) error {
-	funcDir := filepath.Join(gadgetPath, "functions", FuncRNDIS)
+func (gm *GadgetManager) setupEthernetFunc(gadgetPath, funcName string, eth EthernetConfig) (string, error) {
+	funcDir := filepath.Join(gadgetPath, "functions", funcName)
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
-		return fmt.Errorf("failed creating %s function: %w", FuncRNDIS, err)
+		return "", fmt.Errorf("failed creating %s function: %w", funcName, err)
 	}
-	if err := os.WriteFile(filepath.Join(funcDir, "host_addr"), []byte(rndis.HostAddr), 0644); err != nil {
-		return err
+	if err := writeAttrs(funcDir,
+		attr{"host_addr", eth.HostAddr},
+		attr{"dev_addr", eth.DevAddr},
+	); err != nil {
+		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(funcDir, "dev_addr"), []byte(rndis.DevAddr), 0644); err != nil {
+	return funcDir, nil
+}
+
+func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetConfig) error {
+	funcDir, err := gm.setupEthernetFunc(gadgetPath, FuncRNDIS, rndis)
+	if err != nil {
 		return err
 	}
 
@@ -397,13 +444,11 @@ func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetCon
 	if err := os.MkdirAll(osDescDir, 0755); err != nil {
 		return fmt.Errorf("failed creating os_desc dir: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(osDescDir, "use"), []byte(RndisOSDescUse), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(osDescDir, "b_vendor_code"), []byte(RndisOSDescVendorCode), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(osDescDir, "qw_sign"), []byte(RndisOSDescQWSign), 0644); err != nil {
+	if err := writeAttrs(osDescDir,
+		attr{"use", RndisOSDescUse},
+		attr{"b_vendor_code", RndisOSDescVendorCode},
+		attr{"qw_sign", RndisOSDescQWSign},
+	); err != nil {
 		return err
 	}
 
@@ -411,10 +456,10 @@ func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetCon
 	if err := os.MkdirAll(ifaceDir, 0755); err != nil {
 		return fmt.Errorf("failed creating rndis os_desc interface: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(ifaceDir, "compatible_id"), []byte(RndisOSDescCompatID), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(ifaceDir, "sub_compatible_id"), []byte(RndisOSDescSubCompatID), 0644); err != nil {
+	if err := writeAttrs(ifaceDir,
+		attr{"compatible_id", RndisOSDescCompatID},
+		attr{"sub_compatible_id", RndisOSDescSubCompatID},
+	); err != nil {
 		return err
 	}
 
@@ -426,14 +471,8 @@ func (gm *GadgetManager) setupRNDIS(gadgetPath, cfgDir string, rndis EthernetCon
 }
 
 func (gm *GadgetManager) setupECM(gadgetPath, cfgDir string, ecm EthernetConfig) error {
-	funcDir := filepath.Join(gadgetPath, "functions", FuncECM)
-	if err := os.MkdirAll(funcDir, 0755); err != nil {
-		return fmt.Errorf("failed creating %s function: %w", FuncECM, err)
-	}
-	if err := os.WriteFile(filepath.Join(funcDir, "host_addr"), []byte(ecm.HostAddr), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(funcDir, "dev_addr"), []byte(ecm.DevAddr), 0644); err != nil {
+	funcDir, err := gm.setupEthernetFunc(gadgetPath, FuncECM, ecm)
+	if err != nil {
 		return err
 	}
 	return os.Symlink(funcDir, filepath.Join(cfgDir, FuncECM))
@@ -465,14 +504,29 @@ func removeSymlinks(dir string) error {
 	return nil
 }
 
-func removeConfigfsDir(dir string) error {
-	if err := os.Remove(dir); err == nil || os.IsNotExist(err) {
+func (gm *GadgetManager) removeConfigfsDir(dir string) error {
+	err := os.Remove(dir)
+	if err == nil || os.IsNotExist(err) {
 		return nil
 	}
-	return os.RemoveAll(dir)
+	if gm.BaseDir != DefaultBaseDir && errors.Is(err, syscall.ENOTEMPTY) {
+		entries, readErr := os.ReadDir(dir)
+		if readErr == nil {
+			for _, e := range entries {
+				p := filepath.Join(dir, e.Name())
+				if e.IsDir() {
+					_ = gm.removeConfigfsDir(p)
+				} else {
+					_ = os.Remove(p)
+				}
+			}
+		}
+		return os.Remove(dir)
+	}
+	return err
 }
 
-func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
+func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context, gadgetPath string) error {
 	if _, err := os.Stat(gadgetPath); os.IsNotExist(err) {
 		return nil
 	}
@@ -483,7 +537,11 @@ func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
 		if err := os.WriteFile(udcPath, []byte("\n"), 0644); err != nil {
 			return err
 		}
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 
 	// 2. Remove symlinks in os_desc (os_desc/c.1 must be unlinked before configs/c.1 is removed)
@@ -498,10 +556,10 @@ func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
 	}
 
 	// 4. Remove configs/c.1/strings/0x409 and configs/c.1
-	if err := removeConfigfsDir(filepath.Join(cfgDir, "strings", "0x409")); err != nil {
+	if err := gm.removeConfigfsDir(filepath.Join(cfgDir, "strings", "0x409")); err != nil {
 		return err
 	}
-	if err := removeConfigfsDir(cfgDir); err != nil {
+	if err := gm.removeConfigfsDir(cfgDir); err != nil {
 		return err
 	}
 
@@ -509,7 +567,7 @@ func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
 	functionsDir := filepath.Join(gadgetPath, "functions")
 	if entries, err := os.ReadDir(functionsDir); err == nil {
 		for _, entry := range entries {
-			if err := removeConfigfsDir(filepath.Join(functionsDir, entry.Name())); err != nil {
+			if err := gm.removeConfigfsDir(filepath.Join(functionsDir, entry.Name())); err != nil {
 				return err
 			}
 		}
@@ -518,8 +576,8 @@ func (gm *GadgetManager) destroyGadgetUnlocked(gadgetPath string) error {
 	}
 
 	// 6. Remove strings/0x409 and gadgetPath
-	if err := removeConfigfsDir(filepath.Join(gadgetPath, "strings", "0x409")); err != nil {
+	if err := gm.removeConfigfsDir(filepath.Join(gadgetPath, "strings", "0x409")); err != nil {
 		return err
 	}
-	return removeConfigfsDir(gadgetPath)
+	return gm.removeConfigfsDir(gadgetPath)
 }

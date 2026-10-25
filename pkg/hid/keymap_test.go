@@ -36,6 +36,8 @@ func TestLayoutMappings(t *testing.T) {
 	de, _ := GetLayout("DE")
 	assertRuneMapping(t, "DE", de, '?', ModLeftShift, KeyMinus)
 	assertRuneMapping(t, "DE", de, '&', ModLeftShift, Key6)
+	assertRuneMapping(t, "DE", de, '^', 0, KeyGrave)
+	assertRuneMapping(t, "DE", de, '`', ModLeftShift, KeyEqual)
 
 	es, _ := GetLayout("ES")
 	esCases := []struct {
@@ -47,7 +49,18 @@ func TestLayoutMappings(t *testing.T) {
 		{'?', ModLeftShift, KeyMinus},
 		{'¡', 0, KeyEqual},
 		{'¿', ModLeftShift, KeyEqual},
+		{'º', 0, KeyGrave},
+		{'ª', ModLeftShift, KeyGrave},
+		{'`', 0, KeyLeftBrace},
+		{'^', ModLeftShift, KeyLeftBrace},
+		{'[', ModRightAlt, KeyLeftBrace},
+		{'+', 0, KeyRightBrace},
+		{'*', ModLeftShift, KeyRightBrace},
+		{']', ModRightAlt, KeyRightBrace},
+		{'ç', 0, KeyHashtilde},
+		{'Ç', ModLeftShift, KeyHashtilde},
 		{'{', ModRightAlt, KeyApostrophe},
+		{'}', ModRightAlt, KeyHashtilde},
 		{'|', ModRightAlt, Key1},
 	}
 	for _, tc := range esCases {
@@ -64,6 +77,8 @@ func TestLayoutMappings(t *testing.T) {
 		{'}', ModRightAlt, KeyEqual},
 		{'=', 0, KeyEqual},
 		{'+', ModLeftShift, KeyEqual},
+		{'^', 0, KeyLeftBrace},
+		{'¨', ModLeftShift, KeyLeftBrace},
 	}
 	for _, tc := range frCases {
 		assertRuneMapping(t, "FR", fr, tc.ch, tc.mod, tc.key)
@@ -92,6 +107,15 @@ func TestMapKeyName(t *testing.T) {
 	de, _ := GetLayout("DE")
 	if combo, ok := de.MapKeyName("ß"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeyMinus {
 		t.Errorf("MapKeyName(ß) failed: %+v, ok=%v", combo, ok)
+	}
+
+	// Verify FR digits and shifted symbols do not inject ModLeftShift/ModRightAlt in MapKeyName
+	fr, _ := GetLayout("FR")
+	if combo, ok := fr.MapKeyName("1"); !ok || combo.Modifiers != 0 || combo.KeyCode != Key1 {
+		t.Errorf("FR MapKeyName(1) should not inject Shift: %+v, ok=%v", combo, ok)
+	}
+	if combo, ok := es.MapKeyName("/"); !ok || combo.Modifiers != 0 || combo.KeyCode != Key7 {
+		t.Errorf("ES MapKeyName(/) should not inject Shift: %+v, ok=%v", combo, ok)
 	}
 
 	if _, ok := es.MapKeyName("NONEXISTENT_KEY"); ok {

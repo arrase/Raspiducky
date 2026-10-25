@@ -127,7 +127,7 @@ func (l *Layout) MapKeyName(name string) (KeyCombo, bool) {
 		}
 		if ok {
 			if kcs := report.KeyCodes(); len(kcs) > 0 {
-				return KeyCombo{Modifiers: report[0], KeyCode: kcs[0]}, true
+				return KeyCombo{Modifiers: 0, KeyCode: kcs[0]}, true
 			}
 		}
 	}
@@ -225,6 +225,10 @@ func buildDELayout() *Layout {
 	l.Runes['ß'] = NewKeyboardReport(0, KeyMinus)
 
 	// Symbols for DE layout
+	l.Runes['^'] = NewKeyboardReport(0, KeyGrave)
+	l.Runes['°'] = NewKeyboardReport(ModLeftShift, KeyGrave)
+	l.Runes['´'] = NewKeyboardReport(0, KeyEqual)
+	l.Runes['`'] = NewKeyboardReport(ModLeftShift, KeyEqual)
 	l.Runes['"'] = NewKeyboardReport(ModLeftShift, Key2)
 	l.Runes['§'] = NewKeyboardReport(ModLeftShift, Key3)
 	l.Runes['&'] = NewKeyboardReport(ModLeftShift, Key6)
@@ -264,10 +268,10 @@ func buildESLayout() *Layout {
 	// Spanish specific
 	l.Runes['ñ'] = NewKeyboardReport(0, KeySemicolon)
 	l.Runes['Ñ'] = NewKeyboardReport(ModLeftShift, KeySemicolon)
-	l.Runes['ç'] = NewKeyboardReport(0, KeyRightBrace)
-	l.Runes['Ç'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
-	l.Runes['ª'] = NewKeyboardReport(0, KeyGrave)
-	l.Runes['º'] = NewKeyboardReport(ModLeftShift, KeyGrave)
+	l.Runes['ç'] = NewKeyboardReport(0, KeyHashtilde)
+	l.Runes['Ç'] = NewKeyboardReport(ModLeftShift, KeyHashtilde)
+	l.Runes['º'] = NewKeyboardReport(0, KeyGrave)
+	l.Runes['ª'] = NewKeyboardReport(ModLeftShift, KeyGrave)
 
 	l.Runes['"'] = NewKeyboardReport(ModLeftShift, Key2)
 	l.Runes['·'] = NewKeyboardReport(ModLeftShift, Key3)
@@ -281,12 +285,14 @@ func buildESLayout() *Layout {
 	l.Runes['?'] = NewKeyboardReport(ModLeftShift, KeyMinus)
 	l.Runes['¡'] = NewKeyboardReport(0, KeyEqual)
 	l.Runes['¿'] = NewKeyboardReport(ModLeftShift, KeyEqual)
-	l.Runes['+'] = NewKeyboardReport(0, KeyLeftBrace)
-	l.Runes['*'] = NewKeyboardReport(ModLeftShift, KeyLeftBrace)
-	l.Runes[']'] = NewKeyboardReport(ModRightAlt, KeyLeftBrace)
-	l.Runes['`'] = NewKeyboardReport(0, KeyApostrophe)
-	l.Runes['^'] = NewKeyboardReport(ModLeftShift, KeyApostrophe)
+	l.Runes['`'] = NewKeyboardReport(0, KeyLeftBrace)
+	l.Runes['^'] = NewKeyboardReport(ModLeftShift, KeyLeftBrace)
 	l.Runes['['] = NewKeyboardReport(ModRightAlt, KeyLeftBrace)
+	l.Runes['+'] = NewKeyboardReport(0, KeyRightBrace)
+	l.Runes['*'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
+	l.Runes[']'] = NewKeyboardReport(ModRightAlt, KeyRightBrace)
+	l.Runes['´'] = NewKeyboardReport(0, KeyApostrophe)
+	l.Runes['¨'] = NewKeyboardReport(ModLeftShift, KeyApostrophe)
 	l.Runes['{'] = NewKeyboardReport(ModRightAlt, KeyApostrophe)
 	l.Runes['}'] = NewKeyboardReport(ModRightAlt, KeyHashtilde)
 	l.Runes['|'] = NewKeyboardReport(ModRightAlt, Key1)
@@ -346,7 +352,10 @@ func buildFRLayout() *Layout {
 	l.Runes['ç'] = NewKeyboardReport(0, Key9)
 	l.Runes['à'] = NewKeyboardReport(0, Key0)
 
+	l.Runes['²'] = NewKeyboardReport(0, KeyGrave)
 	l.Runes[')'] = NewKeyboardReport(0, KeyMinus)
+	l.Runes['^'] = NewKeyboardReport(0, KeyLeftBrace)
+	l.Runes['¨'] = NewKeyboardReport(ModLeftShift, KeyLeftBrace)
 	l.Runes['$'] = NewKeyboardReport(0, KeyRightBrace)
 	l.Runes['£'] = NewKeyboardReport(ModLeftShift, KeyRightBrace)
 	l.Runes['*'] = NewKeyboardReport(0, KeyHashtilde)

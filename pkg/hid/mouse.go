@@ -1,9 +1,9 @@
 package hid
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"time"
@@ -13,30 +13,21 @@ const (
 	MouseButtonLeft   uint8 = 0x01
 	MouseButtonRight  uint8 = 0x02
 	MouseButtonMiddle uint8 = 0x04
+	MaxAbsCoord             = 32767
 )
 
 // Mouse provides thread-safe control over a USB HID mouse device (/dev/hidg1).
 type Mouse struct {
+	hidWriter
 	mu      sync.Mutex
-	hw      hidWriter
 	buttons uint8
 }
 
 // NewMouse initializes a new Mouse connected to the specified device path.
 func NewMouse(devicePath string) *Mouse {
 	return &Mouse{
-		hw: hidWriter{devicePath: devicePath},
+		hidWriter: hidWriter{devicePath: devicePath},
 	}
-}
-
-// SetWriter overrides the output writer (useful for testing or custom pipes).
-func (m *Mouse) SetWriter(w io.Writer) {
-	m.hw.setWriter(w)
-}
-
-// SetDevicePath updates the target HID device path.
-func (m *Mouse) SetDevicePath(path string) {
-	m.hw.setDevicePath(path)
 }
 
 // Move performs a relative mouse displacement.
@@ -50,7 +41,7 @@ func (m *Mouse) Move(x, y int8) error {
 	report[2] = uint8(x)
 	report[3] = uint8(y)
 
-	return m.hw.writeReport(report[:])
+	return m.writeReport(report[:])
 }
 
 // MoveTo sets an absolute mouse position (0..32767 on X and Y).
@@ -58,13 +49,20 @@ func (m *Mouse) MoveTo(x, y uint16) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if x > MaxAbsCoord {
+		x = MaxAbsCoord
+	}
+	if y > MaxAbsCoord {
+		y = MaxAbsCoord
+	}
+
 	var report [6]byte
 	report[0] = 0x02 // Absolute report ID
 	report[1] = m.buttons
 	binary.LittleEndian.PutUint16(report[2:4], x)
 	binary.LittleEndian.PutUint16(report[4:6], y)
 
-	return m.hw.writeReport(report[:])
+	return m.writeReport(report[:])
 }
 
 // parseButton converts a string button representation to its bitmask value.
@@ -101,7 +99,7 @@ func (m *Mouse) setButton(button string, down bool) error {
 	report[0] = 0x01
 	report[1] = m.buttons
 
-	return m.hw.writeReport(report[:])
+	return m.writeReport(report[:])
 }
 
 // ButtonDown depresses a mouse button without releasing it.
@@ -114,16 +112,19 @@ func (m *Mouse) ButtonUp(button string) error {
 	return m.setButton(button, false)
 }
 
-// Click presses and releases the specified mouse button.
-func (m *Mouse) Click(button string) error {
+// ClickContext presses and releases the specified mouse button, respecting context cancellation.
+func (m *Mouse) ClickContext(ctx context.Context, button string) error {
 	if err := m.ButtonDown(button); err != nil {
 		return err
 	}
-	time.Sleep(20 * time.Millisecond)
+	if err := sleepContext(ctx, 20*time.Millisecond); err != nil {
+		_ = m.ButtonUp(button)
+		return err
+	}
 	return m.ButtonUp(button)
 }
 
-// Close closes the underlying device file if owned by Mouse.
-func (m *Mouse) Close() error {
-	return m.hw.close()
+// Click presses and releases the specified mouse button.
+func (m *Mouse) Click(button string) error {
+	return m.ClickContext(context.Background(), button)
 }

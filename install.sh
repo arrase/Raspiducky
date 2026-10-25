@@ -91,13 +91,8 @@ LATEST_TAG=""
 
 if [ -n "$RELEASE_JSON" ]; then
     LATEST_TAG=$(echo "$RELEASE_JSON" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-    # Search for matching asset browser_download_url
+    # Search for matching architecture asset browser_download_url
     DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "$ASSET_NAME" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-    
-    # Fallback asset name matching if specific arch asset isn't found
-    if [ -z "$DOWNLOAD_URL" ]; then
-        DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "raspiducky" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-    fi
 fi
 
 if [ -n "$LATEST_TAG" ]; then
@@ -124,19 +119,19 @@ fi
 
 if [ "$DOWNLOAD_SUCCESS" -ne 1 ]; then
     warn "Release binary not found at ${DOWNLOAD_URL}"
-    info "Searching for existing binary at /home/pi/raspiducky, ./build/raspiducky-armv6 or ./build/raspiducky..."
+    info "Searching for existing binary at /home/pi/raspiducky, ./build/${ASSET_NAME} or ./build/raspiducky..."
     
     if [ -f "/home/pi/raspiducky" ]; then
         cp /home/pi/raspiducky "$TMP_BINARY"
         success "Using existing binary from /home/pi/raspiducky."
-    elif [ -f "./build/raspiducky-armv6" ]; then
-        cp ./build/raspiducky-armv6 "$TMP_BINARY"
-        success "Using local build binary ./build/raspiducky-armv6."
+    elif [ -f "./build/${ASSET_NAME}" ]; then
+        cp "./build/${ASSET_NAME}" "$TMP_BINARY"
+        success "Using local build binary ./build/${ASSET_NAME}."
     elif [ -f "./build/raspiducky" ]; then
         cp ./build/raspiducky "$TMP_BINARY"
         success "Using local build binary ./build/raspiducky."
     else
-        error "Failed to download $ASSET_NAME and no local fallback binary found. Once a release with binaries is published on GitHub, the installer will download it automatically."
+        error "Failed to download $ASSET_NAME and no local fallback binary found for architecture $UNAME_M."
     fi
 fi
 

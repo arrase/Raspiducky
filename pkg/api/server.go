@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -10,7 +11,10 @@ import (
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
-const errInvalidJSON = "Invalid JSON payload"
+const (
+	errInvalidJSON      = "Invalid JSON payload"
+	maxRequestBodyBytes = 1 << 20 // 1 MB
+)
 
 // Server represents the Raspiducky REST API & Embedded Web Dashboard Server.
 type Server struct {
@@ -19,31 +23,33 @@ type Server struct {
 	scriptManager *ScriptManager
 	runnerEngine  *RunnerEngine
 	ledWatcher    *hid.LEDWatcher
+	ledUnsub      func()
 	mux           *http.ServeMux
 }
 
 // ServerOptions allows custom configuration of the API Server.
 type ServerOptions struct {
-	StorageDir string
-	Keyboard   *hid.Keyboard
-	Mouse      *hid.Mouse
-	LEDWatcher *hid.LEDWatcher
-	GadgetOpts []gadget.Option
+	StorageDir     string
+	Keyboard       *hid.Keyboard
+	Mouse          *hid.Mouse
+	LEDWatcher     *hid.LEDWatcher
+	KeyboardLayout string
+	TypingDelayMs  int
+	GadgetManager  *gadget.GadgetManager
 }
 
 // NewServer initializes a new Raspiducky API Server instance.
 func NewServer(opts ServerOptions) (*Server, error) {
-	hub := NewHub()
-	go hub.Run()
-
-	gm := NewGadgetManager(hub, opts.Keyboard, opts.Mouse, opts.StorageDir, opts.GadgetOpts...)
-
 	sm, err := NewScriptManager(opts.StorageDir)
 	if err != nil {
 		return nil, err
 	}
 
+	hub := NewHub()
+	go hub.Run()
+
 	runner := NewRunnerEngine(hub, opts.Keyboard, opts.Mouse, opts.LEDWatcher)
+	gm := NewGadgetManager(hub, runner, opts)
 
 	s := &Server{
 		hub:           hub,
@@ -62,13 +68,21 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	return s, nil
 }
 
+// Close stops active jobs, unsubscribes watchers, and shuts down the WebSocket hub.
+func (s *Server) Close() {
+	_ = s.runnerEngine.Stop()
+	if s.ledUnsub != nil {
+		s.ledUnsub()
+	}
+	s.hub.Close()
+}
+
 // Handler returns the HTTP handler for the server.
 func (s *Server) Handler() http.Handler {
 	return s.mux
 }
 
 func (s *Server) routes() {
-	// REST API Endpoints
 	s.mux.HandleFunc("GET /api/gadget", s.handleGetGadget)
 	s.mux.HandleFunc("POST /api/gadget", s.handlePostGadget)
 
@@ -76,17 +90,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/scripts", s.handlePostScripts)
 	s.mux.HandleFunc("DELETE /api/scripts/{name}", s.handleDeleteScript)
 
+	s.mux.HandleFunc("GET /api/job", s.handleGetJob)
 	s.mux.HandleFunc("POST /api/run", s.handleRunScript)
 	s.mux.HandleFunc("POST /api/stop", s.handleStopScript)
 
-	// WebSocket Endpoint
 	s.mux.HandleFunc("GET /api/ws", s.handleWS)
 
-	// Static Web Assets Embedding
-	webFS, err := WebFS()
-	if err == nil {
-		s.mux.Handle("/", http.FileServer(webFS))
-	}
+	s.mux.Handle("/", http.FileServer(WebFS()))
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +113,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+	_ = conn.WriteJSON(WSMessage{
+		Type:    "gadget_status",
+		Payload: s.gadgetManager.GetStatus(),
+	})
+
 	if job := s.runnerEngine.GetActiveJob(); job != nil {
 		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 		_ = conn.WriteJSON(WSMessage{
@@ -115,7 +131,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listenLEDState() {
-	ledChan, _ := s.ledWatcher.Subscribe()
+	ledChan, unsub := s.ledWatcher.Subscribe()
+	s.ledUnsub = unsub
 	go func() {
 		for state := range ledChan {
 			s.hub.Broadcast(WSMessage{
@@ -134,7 +151,7 @@ func (s *Server) handleGetGadget(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePostGadget(w http.ResponseWriter, r *http.Request) {
 	var cfg GadgetConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	if err := decodeJSON(w, r, &cfg); err != nil {
 		writeError(w, http.StatusBadRequest, errInvalidJSON)
 		return
 	}
@@ -159,7 +176,7 @@ func (s *Server) handleGetScripts(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePostScripts(w http.ResponseWriter, r *http.Request) {
 	var script Script
-	if err := json.NewDecoder(r.Body).Decode(&script); err != nil {
+	if err := decodeJSON(w, r, &script); err != nil {
 		writeError(w, http.StatusBadRequest, errInvalidJSON)
 		return
 	}
@@ -184,16 +201,27 @@ func (s *Server) handleDeleteScript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.scriptManager.DeleteScript(name); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		switch {
+		case errors.Is(err, ErrInvalidScriptName):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, ErrScriptNotFound):
+			writeError(w, http.StatusNotFound, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.runnerEngine.GetActiveJob())
+}
+
 func (s *Server) handleRunScript(w http.ResponseWriter, r *http.Request) {
 	var req RunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, errInvalidJSON)
 		return
 	}
@@ -223,6 +251,11 @@ func (s *Server) handleStopScript(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helpers
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	return json.NewDecoder(r.Body).Decode(dst)
+}
+
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
