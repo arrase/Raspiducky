@@ -3,12 +3,16 @@ package api
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-const wsWriteTimeout = 5 * time.Second
+const (
+	wsWriteTimeout  = 5 * time.Second
+	wsClientBufSize = 64
+)
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -16,55 +20,89 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type wsClient struct {
+	conn   *websocket.Conn
+	send   chan WSMessage
+	closed bool
+}
+
 // Hub maintains the set of active WebSocket connections and broadcasts messages.
 type Hub struct {
-	clients    map[*websocket.Conn]bool
+	clients    map[*wsClient]struct{}
 	broadcast  chan WSMessage
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
+	register   chan *wsClient
+	unregister chan *wsClient
+	stopCh     chan struct{}
+	closeOnce  sync.Once
 }
 
 // NewHub creates a new WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*websocket.Conn]bool),
+		clients:    make(map[*wsClient]struct{}),
 		broadcast:  make(chan WSMessage, 256),
-		register:   make(chan *websocket.Conn),
-		unregister: make(chan *websocket.Conn),
+		register:   make(chan *wsClient),
+		unregister: make(chan *wsClient),
+		stopCh:     make(chan struct{}),
 	}
+}
+
+func (h *Hub) removeClient(client *wsClient) {
+	if _, ok := h.clients[client]; !ok {
+		return
+	}
+	delete(h.clients, client)
+	if !client.closed {
+		client.closed = true
+		close(client.send)
+	}
+	_ = client.conn.Close()
 }
 
 // Run starts the event loop for broadcasting messages to WebSocket clients.
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.stopCh:
+			for client := range h.clients {
+				h.removeClient(client)
+			}
+			return
+
 		case client := <-h.register:
-			h.clients[client] = true
-			log.Printf("[WebSocket] Client connected (%s)", client.RemoteAddr())
+			h.clients[client] = struct{}{}
+			log.Printf("[WebSocket] Client connected (%s)", client.conn.RemoteAddr())
 
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				client.Close()
-				log.Printf("[WebSocket] Client disconnected (%s)", client.RemoteAddr())
+				h.removeClient(client)
+				log.Printf("[WebSocket] Client disconnected (%s)", client.conn.RemoteAddr())
 			}
 
 		case msg := <-h.broadcast:
 			for client := range h.clients {
-				_ = client.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-				if err := client.WriteJSON(msg); err != nil {
-					log.Printf("[WebSocket] Error writing to client %s: %v", client.RemoteAddr(), err)
-					client.Close()
-					delete(h.clients, client)
+				select {
+				case client.send <- msg:
+				default:
+					log.Printf("[WebSocket] Client %s send buffer full, disconnecting", client.conn.RemoteAddr())
+					h.removeClient(client)
 				}
 			}
 		}
 	}
 }
 
+// Close stops the hub and disconnects all active WebSocket clients.
+func (h *Hub) Close() {
+	h.closeOnce.Do(func() {
+		close(h.stopCh)
+	})
+}
+
 // Broadcast dispatches a message to all connected WebSocket clients.
 func (h *Hub) Broadcast(msg WSMessage) {
 	select {
+	case <-h.stopCh:
 	case h.broadcast <- msg:
 	default:
 		log.Printf("[WebSocket] Broadcast channel full, dropping message")
@@ -81,19 +119,43 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, 
 	return conn, nil
 }
 
-// Register registers an upgraded WebSocket connection with the Hub and starts its read loop.
+// Register registers an upgraded WebSocket connection with the Hub and starts its read/write loops.
 func (h *Hub) Register(conn *websocket.Conn) {
-	h.register <- conn
+	client := &wsClient{
+		conn: conn,
+		send: make(chan WSMessage, wsClientBufSize),
+	}
 
-	// Keep-alive / read loop
+	select {
+	case <-h.stopCh:
+		_ = conn.Close()
+		return
+	case h.register <- client:
+	}
+
 	go func() {
 		defer func() {
-			h.unregister <- conn
+			_ = conn.Close()
+		}()
+		for msg := range client.send {
+			_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := conn.WriteJSON(msg); err != nil {
+				log.Printf("[WebSocket] Error writing to client %s: %v", conn.RemoteAddr(), err)
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer func() {
+			select {
+			case h.unregister <- client:
+			case <-h.stopCh:
+			}
 		}()
 
 		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
+			if _, _, err := conn.ReadMessage(); err != nil {
 				break
 			}
 		}

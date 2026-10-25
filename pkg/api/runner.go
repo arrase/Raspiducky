@@ -18,6 +18,7 @@ type RunnerEngine struct {
 	mu         sync.RWMutex
 	activeJob  *JobStatus
 	cancelFn   context.CancelFunc
+	jobDone    chan struct{}
 	hub        *Hub
 	keyboard   *hid.Keyboard
 	mouse      *hid.Mouse
@@ -50,6 +51,11 @@ func (re *RunnerEngine) Run(req RunRequest) (JobStatus, error) {
 	if strings.TrimSpace(req.Script) == "" {
 		return JobStatus{}, errors.New("cannot execute empty script")
 	}
+	if req.Layout != "" {
+		if _, err := hid.GetLayout(req.Layout); err != nil {
+			return JobStatus{}, err
+		}
+	}
 
 	re.mu.Lock()
 	if re.activeJob != nil && re.activeJob.Status == "running" {
@@ -62,47 +68,54 @@ func (re *RunnerEngine) Run(req RunRequest) (JobStatus, error) {
 	if scriptName == "" {
 		scriptName = "inline_payload"
 	}
+	scriptType := scripting.DetectScriptType(req.Type, scriptName)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	doneCh := make(chan struct{})
 	re.cancelFn = cancel
+	re.jobDone = doneCh
 
 	job := JobStatus{
 		ID:         jobID,
 		ScriptName: scriptName,
-		Type:       req.Type,
+		Type:       scriptType,
 		Status:     "running",
 		StartedAt:  time.Now(),
 	}
 	re.activeJob = &job
 	re.mu.Unlock()
 
-	// Broadcast job start event
 	re.broadcastJobStatus(job)
-	re.broadcastLog("INFO", "ENGINE", fmt.Sprintf("Job [%s] started: %s (%s)", jobID, scriptName, req.Type))
+	re.broadcastLog("INFO", "ENGINE", fmt.Sprintf("Job [%s] started: %s (%s)", jobID, scriptName, scriptType))
 
-	// Execute in background goroutine
-	go re.executeJob(ctx, job, req.Script, req.TypingDelayMs)
+	go re.executeJob(ctx, doneCh, job, req)
 
 	return job, nil
 }
 
-// Stop cancels the currently active job.
+// Stop cancels the currently active job and waits for its execution goroutine to clean up.
 func (re *RunnerEngine) Stop() error {
 	re.mu.Lock()
-	defer re.mu.Unlock()
-
 	if re.activeJob == nil || re.activeJob.Status != "running" {
+		re.mu.Unlock()
 		return errors.New("no active job is currently running")
 	}
 
 	re.cancelFn()
+	doneCh := re.jobDone
 
 	now := time.Now()
 	re.activeJob.Status = "stopped"
 	re.activeJob.FinishedAt = &now
+	stoppedJob := *re.activeJob
+	re.mu.Unlock()
 
-	re.broadcastJobStatus(*re.activeJob)
-	re.broadcastLog("WARN", "ENGINE", fmt.Sprintf("Job [%s] manually stopped by user.", re.activeJob.ID))
+	if doneCh != nil {
+		<-doneCh
+	}
+
+	re.broadcastJobStatus(stoppedJob)
+	re.broadcastLog("WARN", "ENGINE", fmt.Sprintf("Job [%s] manually stopped by user.", stoppedJob.ID))
 
 	return nil
 }
@@ -117,26 +130,29 @@ func (w *wsLogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func isJSScript(scriptType, scriptName string) bool {
-	return strings.EqualFold(scriptType, "javascript") ||
-		strings.EqualFold(scriptType, "js") ||
-		(scriptType == "" && strings.HasSuffix(strings.ToLower(scriptName), ".js"))
-}
+func (re *RunnerEngine) executeJob(ctx context.Context, doneCh chan struct{}, job JobStatus, req RunRequest) {
+	defer close(doneCh)
 
-func (re *RunnerEngine) executeJob(ctx context.Context, job JobStatus, scriptContent string, typingDelayMs *int) {
-	var execErr error
+	origLayout := re.keyboard.GetLayout()
+	origDelay, origJitter := re.keyboard.GetTypingSpeed()
+	if req.TypingDelayMs > 0 {
+		re.keyboard.SetTypingSpeed(req.TypingDelayMs, 0)
+	}
+	if req.Layout != "" {
+		_ = re.keyboard.SetLayout(req.Layout)
+	}
 
-	if typingDelayMs != nil && re.keyboard != nil {
-		re.keyboard.SetTypingSpeed(*typingDelayMs, 0)
+	source := "DUCKY"
+	if job.Type == scripting.TypeJavaScript {
+		source = "JS"
 	}
 
 	engine := scripting.NewScriptEngine(re.keyboard, re.mouse, re.ledWatcher)
+	execErr := engine.Run(ctx, job.Type, job.ScriptName, req.Script, &wsLogWriter{re: re, source: source})
 
-	if isJSScript(job.Type, job.ScriptName) {
-		execErr = engine.RunJS(ctx, scriptContent, &wsLogWriter{re: re, source: "JS"})
-	} else {
-		execErr = engine.RunDuckyScript(ctx, scriptContent, &wsLogWriter{re: re, source: "DUCKY"})
-	}
+	_ = re.keyboard.SetLayout(origLayout)
+	re.keyboard.SetTypingSpeed(origDelay, origJitter)
+	_ = re.keyboard.ReleaseKeys()
 
 	re.mu.Lock()
 	defer re.mu.Unlock()

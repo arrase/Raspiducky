@@ -3,11 +3,12 @@
  */
 
 const GADGET_TOGGLES = [
-    { id: 'gadget-keyboard', key: 'keyboard', endpoints: 1 },
-    { id: 'gadget-mouse', key: 'mouse', endpoints: 1 },
-    { id: 'gadget-storage', key: 'storage', endpoints: 1 },
-    { id: 'gadget-ethernet', key: 'ethernet', endpoints: 4 },
-    { id: 'gadget-serial', key: 'serial', endpoints: 2 }
+    { id: 'gadget-keyboard', key: 'keyboard' },
+    { id: 'gadget-mouse', key: 'mouse' },
+    { id: 'gadget-storage', key: 'storage' },
+    { id: 'gadget-rndis', key: 'rndis' },
+    { id: 'gadget-ecm', key: 'ecm' },
+    { id: 'gadget-serial', key: 'serial' }
 ];
 
 async function loadGadgetStatus() {
@@ -26,6 +27,8 @@ function populateGadgetToggles(cfg) {
     for (const { id, key } of GADGET_TOGGLES) {
         document.getElementById(id).checked = Boolean(cfg[key]);
     }
+    document.getElementById('storage-cdrom').checked = Boolean(cfg.storageCdrom);
+    document.getElementById('storage-readonly').checked = Boolean(cfg.storageReadOnly);
 }
 
 function populateGadgetForm(cfg) {
@@ -61,11 +64,17 @@ function updateGadgetUI(gadgetData) {
 }
 
 function countActiveEndpoints() {
+    const costs = state.gadget.endpointCosts || {};
     let total = 0;
-    for (const { id, endpoints } of GADGET_TOGGLES) {
+    let anyChecked = false;
+    for (const { id, key } of GADGET_TOGGLES) {
         if (document.getElementById(id).checked) {
-            total += endpoints;
+            anyChecked = true;
+            total += costs[key] || 0;
         }
+    }
+    if (anyChecked) {
+        total += costs.ep0 || 1;
     }
     return total;
 }
@@ -78,13 +87,23 @@ function updateEndpointMonitor() {
     const warningElem = document.getElementById('endpoint-warning');
     const applyBtn = document.getElementById('btn-apply-gadget');
 
-    if (maxEndpoints <= 0) {
-        countElem.textContent = `${endpoints} / ?`;
-        progressElem.style.width = '100%';
+    if (endpoints === 0) {
+        countElem.textContent = maxEndpoints > 0 ? `0 / ${maxEndpoints}` : '0 / ?';
+        progressElem.style.width = '0%';
         progressElem.style.background = 'var(--accent-red)';
-        warningElem.textContent = 'Hardware limit unknown or debugfs not mounted. Deployment blocked for safety.';
+        warningElem.textContent = 'Select at least one USB function to deploy.';
         warningElem.style.display = 'block';
         applyBtn.disabled = true;
+        return;
+    }
+
+    if (maxEndpoints <= 0) {
+        countElem.textContent = `${endpoints} / ?`;
+        progressElem.style.width = '50%';
+        progressElem.style.background = 'var(--accent-cyan)';
+        warningElem.textContent = '';
+        warningElem.style.display = 'none';
+        applyBtn.disabled = false;
         return;
     }
 
@@ -95,24 +114,16 @@ function updateEndpointMonitor() {
     progressElem.style.width = `${pct}%`;
     progressElem.style.background = exceeded ? 'var(--accent-red)' : 'var(--accent-cyan)';
     warningElem.textContent = exceeded
-        ? `Hardware limit exceeded. The USB controller supports a maximum of ${maxEndpoints} IN endpoints.`
+        ? `Hardware limit exceeded. The USB controller supports a maximum of ${maxEndpoints} endpoints.`
         : '';
     warningElem.style.display = exceeded ? 'block' : 'none';
     applyBtn.disabled = exceeded;
 }
 
-// Add event listeners when DOM loads
 document.addEventListener('DOMContentLoaded', () => {
-    const applyBtn = document.getElementById('btn-apply-gadget');
     for (const { id } of GADGET_TOGGLES) {
-        document.getElementById(id).addEventListener('change', async (e) => {
+        document.getElementById(id).addEventListener('change', () => {
             updateEndpointMonitor();
-            if (applyBtn.disabled) {
-                e.target.checked = !e.target.checked;
-                updateEndpointMonitor();
-                return;
-            }
-            await applyGadgetConfig();
         });
     }
 });
@@ -137,7 +148,9 @@ async function applyGadgetConfig(event) {
         serialNumber: document.getElementById('serial-number').value.trim(),
         keyboardLayout: document.getElementById('keyboard-layout').value.trim(),
         storageSizeMb: Number.parseInt(document.getElementById('storage-size').value, 10),
-        typingDelayMs: Number.parseInt(document.getElementById('typing-delay').value, 10)
+        typingDelayMs: Number.parseInt(document.getElementById('typing-delay').value, 10),
+        storageCdrom: document.getElementById('storage-cdrom').checked,
+        storageReadOnly: document.getElementById('storage-readonly').checked
     };
     for (const { id, key } of GADGET_TOGGLES) {
         payload[key] = document.getElementById(id).checked;

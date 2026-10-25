@@ -104,26 +104,77 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// CountINEndpoints calculates the total number of IN endpoints required by this configuration
-func (c Config) CountINEndpoints() int {
-	inEndpoints := 0
+const (
+	EndpointsEP0         = 1
+	EndpointsKeyboard    = 1 // Interrupt IN
+	EndpointsMouse       = 1 // Interrupt IN
+	EndpointsMassStorage = 2 // Bulk IN + Bulk OUT
+	EndpointsRNDIS       = 3 // Interrupt IN + Bulk IN + Bulk OUT
+	EndpointsECM         = 3 // Interrupt IN + Bulk IN + Bulk OUT
+	EndpointsACM         = 3 // Interrupt IN + Bulk IN + Bulk OUT
+)
+
+// EndpointCosts returns the hardware endpoint cost map for USB functions.
+func EndpointCosts() map[string]int {
+	return map[string]int{
+		"ep0":      EndpointsEP0,
+		"keyboard": EndpointsKeyboard,
+		"mouse":    EndpointsMouse,
+		"storage":  EndpointsMassStorage,
+		"rndis":    EndpointsRNDIS,
+		"ecm":      EndpointsECM,
+		"serial":   EndpointsACM,
+		"ethernet": EndpointsRNDIS + EndpointsECM,
+	}
+}
+
+// ActiveFunctions returns the list of enabled configfs function names.
+func (c Config) ActiveFunctions() []string {
+	funcs := make([]string, 0, 6)
 	if c.Keyboard {
-		inEndpoints++
+		funcs = append(funcs, FuncKeyboard)
 	}
 	if c.Mouse {
-		inEndpoints++
+		funcs = append(funcs, FuncMouse)
 	}
 	if c.MassStorage.Enabled {
-		inEndpoints++ // Bulk IN
+		funcs = append(funcs, FuncMassStorage)
 	}
 	if c.RNDIS.Enabled {
-		inEndpoints += 2 // Interrupt IN, Bulk IN
+		funcs = append(funcs, FuncRNDIS)
 	}
 	if c.ECM.Enabled {
-		inEndpoints += 2 // Interrupt IN, Bulk IN
+		funcs = append(funcs, FuncECM)
 	}
 	if c.ACM.Enabled {
-		inEndpoints += 2 // Interrupt IN, Bulk IN
+		funcs = append(funcs, FuncACM)
 	}
-	return inEndpoints
+	return funcs
+}
+
+// CountEndpoints calculates the total number of hardware endpoints (EP0 + IN + OUT) required by this configuration.
+func (c Config) CountEndpoints() int {
+	endpoints := 0
+	if c.Keyboard {
+		endpoints += EndpointsKeyboard
+	}
+	if c.Mouse {
+		endpoints += EndpointsMouse
+	}
+	if c.MassStorage.Enabled {
+		endpoints += EndpointsMassStorage
+	}
+	if c.RNDIS.Enabled {
+		endpoints += EndpointsRNDIS
+	}
+	if c.ECM.Enabled {
+		endpoints += EndpointsECM
+	}
+	if c.ACM.Enabled {
+		endpoints += EndpointsACM
+	}
+	if endpoints > 0 {
+		endpoints += EndpointsEP0
+	}
+	return endpoints
 }

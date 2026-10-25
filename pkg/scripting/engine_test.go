@@ -14,33 +14,48 @@ func TestScriptEngine_MouseClickAndMoveClamping(t *testing.T) {
 	mouse := hid.NewMouse("")
 	mouse.SetWriter(&mouseBuf)
 
-	engine := NewScriptEngine(nil, mouse, nil)
+	var kbdBuf bytes.Buffer
+	kbd, _ := hid.NewKeyboard("", "US")
+	kbd.SetWriter(&kbdBuf)
+
+	engine := NewScriptEngine(kbd, mouse, nil)
 	var logBuf bytes.Buffer
 
 	js := `
+type();
+press();
 mouseMove(200, -300);
+mouseMoveTo(-50, 50000);
 mouseClick();
 `
 	if err := engine.RunJS(context.Background(), js, &logBuf); err != nil {
 		t.Fatalf("RunJS failed: %v", err)
 	}
 
+	if kbdBuf.Len() != 0 {
+		t.Errorf("expected type() and press() with no args to write 0 bytes, got %d", kbdBuf.Len())
+	}
+
 	data := mouseBuf.Bytes()
 	// 1st report (6 bytes): Move(127, -127)
-	// 2nd report (6 bytes): ButtonDown("left")
-	// 3rd report (6 bytes): ButtonUp("left")
-	if len(data) != 18 {
-		t.Fatalf("expected 18 bytes of mouse reports, got %d", len(data))
+	// 2nd report (6 bytes): MoveTo(0, 32767)
+	// 3rd report (6 bytes): ButtonDown("left")
+	// 4th report (6 bytes): ButtonUp("left")
+	if len(data) != 24 {
+		t.Fatalf("expected 24 bytes of mouse reports, got %d", len(data))
 	}
 
 	if int8(data[2]) != 127 || int8(data[3]) != -127 {
 		t.Errorf("expected clamped move (127, -127), got (%d, %d)", int8(data[2]), int8(data[3]))
 	}
-	if data[6+1] != hid.MouseButtonLeft {
-		t.Errorf("expected default mouseClick() to press left button (0x01), got 0x%02x", data[6+1])
+	if data[6] != 0x02 || data[8] != 0 || data[9] != 0 || data[10] != 0xff || data[11] != 0x7f {
+		t.Errorf("expected clamped MoveTo (0, 32767), got report %v", data[6:12])
 	}
-	if data[12+1] != 0x00 {
-		t.Errorf("expected mouseClick() release report to have buttons 0x00, got 0x%02x", data[12+1])
+	if data[12+1] != hid.MouseButtonLeft {
+		t.Errorf("expected default mouseClick() to press left button (0x01), got 0x%02x", data[12+1])
+	}
+	if data[18+1] != 0x00 {
+		t.Errorf("expected mouseClick() release report to have buttons 0x00, got 0x%02x", data[18+1])
 	}
 }
 

@@ -3,7 +3,6 @@ package hid
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"strings"
 	"sync"
@@ -12,8 +11,8 @@ import (
 
 // Keyboard provides thread-safe access to a USB HID keyboard device (/dev/hidg0).
 type Keyboard struct {
+	hidWriter
 	mu               sync.Mutex
-	hw               hidWriter
 	layout           *Layout
 	keyDelayMs       int
 	keyDelayJitterMs int
@@ -27,20 +26,10 @@ func NewKeyboard(devicePath, layoutName string) (*Keyboard, error) {
 	}
 
 	return &Keyboard{
-		hw:         hidWriter{devicePath: devicePath},
+		hidWriter:  hidWriter{devicePath: devicePath},
 		layout:     layout,
 		keyDelayMs: 10,
 	}, nil
-}
-
-// SetWriter overrides the output writer (useful for testing or custom pipes).
-func (kbd *Keyboard) SetWriter(w io.Writer) {
-	kbd.hw.setWriter(w)
-}
-
-// SetDevicePath updates the target HID device path.
-func (kbd *Keyboard) SetDevicePath(path string) {
-	kbd.hw.setDevicePath(path)
 }
 
 // SetLayout changes the active keyboard layout.
@@ -53,6 +42,13 @@ func (kbd *Keyboard) SetLayout(layoutName string) error {
 	}
 	kbd.layout = layout
 	return nil
+}
+
+// GetLayout returns the active keyboard layout name.
+func (kbd *Keyboard) GetLayout() string {
+	kbd.mu.Lock()
+	defer kbd.mu.Unlock()
+	return kbd.layout.Name
 }
 
 // SetTypingSpeed sets inter-keystroke delay and optional random jitter in milliseconds.
@@ -76,10 +72,19 @@ func (kbd *Keyboard) GetTypingSpeed() (int, int) {
 	return kbd.keyDelayMs, kbd.keyDelayJitterMs
 }
 
-const (
-	minKeyHoldDuration = 20 * time.Millisecond
-	minKeyDelayMs      = 20
-)
+const minKeyHoldDuration = 20 * time.Millisecond
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
+}
 
 func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
 	kbd.mu.Lock()
@@ -88,23 +93,15 @@ func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
 	kbd.mu.Unlock()
 
 	totalDelay := delay
-	if totalDelay < minKeyDelayMs {
-		totalDelay = minKeyDelayMs
-	}
 	if jitter > 0 {
 		totalDelay += rand.Intn(jitter)
 	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(time.Duration(totalDelay) * time.Millisecond):
-		return nil
-	}
+	return sleepContext(ctx, time.Duration(totalDelay)*time.Millisecond)
 }
 
 // WriteReport writes an 8-byte KeyboardReport to the device in a thread-safe manner.
 func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
-	return kbd.hw.writeReport(report[:])
+	return kbd.writeReport(report[:])
 }
 
 // ReleaseKeys sends an empty report to release all currently pressed keys.
@@ -145,7 +142,10 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 		if err := kbd.WriteReport(NewKeyboardReport(modifiers)); err != nil {
 			return err
 		}
-		time.Sleep(minKeyHoldDuration)
+		if err := sleepContext(ctx, minKeyHoldDuration); err != nil {
+			_ = kbd.ReleaseKeys()
+			return err
+		}
 	}
 
 	report := NewKeyboardReport(modifiers, keycodes...)
@@ -153,7 +153,10 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 		return err
 	}
 
-	time.Sleep(minKeyHoldDuration)
+	if err := sleepContext(ctx, minKeyHoldDuration); err != nil {
+		_ = kbd.ReleaseKeys()
+		return err
+	}
 	if err := kbd.ReleaseKeys(); err != nil {
 		return err
 	}
@@ -163,10 +166,8 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 // TypeString types out the given text string character by character according to the current layout and typing speed.
 func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 	for _, r := range text {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		kbd.mu.Lock()
@@ -181,7 +182,10 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 		if err := kbd.WriteReport(report); err != nil {
 			return err
 		}
-		time.Sleep(minKeyHoldDuration)
+		if err := sleepContext(ctx, minKeyHoldDuration); err != nil {
+			_ = kbd.ReleaseKeys()
+			return err
+		}
 		if err := kbd.ReleaseKeys(); err != nil {
 			return err
 		}
@@ -190,9 +194,4 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 		}
 	}
 	return nil
-}
-
-// Close closes the underlying device file if owned by Keyboard.
-func (kbd *Keyboard) Close() error {
-	return kbd.hw.close()
 }

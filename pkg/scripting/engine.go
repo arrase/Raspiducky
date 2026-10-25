@@ -43,7 +43,7 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 	}()
 
 	e.injectKeyboard(ctx, vm)
-	e.injectMouse(vm)
+	e.injectMouse(ctx, vm)
 	e.injectLED(ctx, vm)
 	e.injectUtils(ctx, vm, logWriter)
 
@@ -56,31 +56,31 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 
 func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
 	_ = vm.Set("type", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 || goja.IsUndefined(call.Argument(0)) || goja.IsNull(call.Argument(0)) {
+			return goja.Undefined()
+		}
 		text := call.Argument(0).String()
-		if e.keyboard != nil {
-			if err := e.keyboard.TypeString(ctx, text); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+		if err := e.keyboard.TypeString(ctx, text); err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
 		return goja.Undefined()
 	})
 
 	_ = vm.Set("press", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 || goja.IsUndefined(call.Argument(0)) || goja.IsNull(call.Argument(0)) {
+			return goja.Undefined()
+		}
 		keys := call.Argument(0).String()
-		if e.keyboard != nil {
-			if err := e.keyboard.Press(ctx, keys); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+		if err := e.keyboard.Press(ctx, keys); err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
 		return goja.Undefined()
 	})
 
 	_ = vm.Set("layout", func(call goja.FunctionCall) goja.Value {
 		lang := call.Argument(0).String()
-		if e.keyboard != nil {
-			if err := e.keyboard.SetLayout(lang); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+		if err := e.keyboard.SetLayout(lang); err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
 		return goja.Undefined()
 	})
@@ -88,9 +88,7 @@ func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
 	_ = vm.Set("typingSpeed", func(call goja.FunctionCall) goja.Value {
 		d := int(call.Argument(0).ToInteger())
 		j := int(call.Argument(1).ToInteger())
-		if e.keyboard != nil {
-			e.keyboard.SetTypingSpeed(d, j)
-		}
+		e.keyboard.SetTypingSpeed(d, j)
 		return goja.Undefined()
 	})
 }
@@ -105,25 +103,31 @@ func clampInt8(v int64) int8 {
 	return int8(v)
 }
 
-func (e *ScriptEngine) injectMouse(vm *goja.Runtime) {
+func clampUint15(v int64) uint16 {
+	if v < 0 {
+		return 0
+	}
+	if v > hid.MaxAbsCoord {
+		return hid.MaxAbsCoord
+	}
+	return uint16(v)
+}
+
+func (e *ScriptEngine) injectMouse(ctx context.Context, vm *goja.Runtime) {
 	_ = vm.Set("mouseMove", func(call goja.FunctionCall) goja.Value {
 		x := clampInt8(call.Argument(0).ToInteger())
 		y := clampInt8(call.Argument(1).ToInteger())
-		if e.mouse != nil {
-			if err := e.mouse.Move(x, y); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+		if err := e.mouse.Move(x, y); err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
 		return goja.Undefined()
 	})
 
 	_ = vm.Set("mouseMoveTo", func(call goja.FunctionCall) goja.Value {
-		x := uint16(call.Argument(0).ToInteger())
-		y := uint16(call.Argument(1).ToInteger())
-		if e.mouse != nil {
-			if err := e.mouse.MoveTo(x, y); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+		x := clampUint15(call.Argument(0).ToInteger())
+		y := clampUint15(call.Argument(1).ToInteger())
+		if err := e.mouse.MoveTo(x, y); err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
 		return goja.Undefined()
 	})
@@ -133,10 +137,8 @@ func (e *ScriptEngine) injectMouse(vm *goja.Runtime) {
 		if len(call.Arguments) > 0 && !goja.IsUndefined(call.Argument(0)) && !goja.IsNull(call.Argument(0)) {
 			btn = call.Argument(0).String()
 		}
-		if e.mouse != nil {
-			if err := e.mouse.Click(btn); err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
+		if err := e.mouse.ClickContext(ctx, btn); err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
 		return goja.Undefined()
 	})
@@ -156,22 +158,19 @@ func (e *ScriptEngine) injectLED(ctx context.Context, vm *goja.Runtime) {
 			timeoutMs = 5000
 		}
 
-		if e.ledWatcher != nil {
-			mask, err := hid.ParseLEDMask(filter)
-			if err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
-			state, err := e.ledWatcher.WaitLED(ctx, mask, time.Duration(timeoutMs)*time.Millisecond)
-			if err != nil {
-				panic(vm.ToValue(err.Error()))
-			}
-			obj := vm.NewObject()
-			_ = obj.Set("numLock", state.NumLock)
-			_ = obj.Set("capsLock", state.CapsLock)
-			_ = obj.Set("scrollLock", state.ScrollLock)
-			return obj
+		mask, err := hid.ParseLEDMask(filter)
+		if err != nil {
+			panic(vm.ToValue(err.Error()))
 		}
-		return goja.Undefined()
+		state, err := e.ledWatcher.WaitLED(ctx, mask, time.Duration(timeoutMs)*time.Millisecond)
+		if err != nil {
+			panic(vm.ToValue(err.Error()))
+		}
+		obj := vm.NewObject()
+		_ = obj.Set("numLock", state.NumLock)
+		_ = obj.Set("capsLock", state.CapsLock)
+		_ = obj.Set("scrollLock", state.ScrollLock)
+		return obj
 	})
 }
 
@@ -213,4 +212,12 @@ func (e *ScriptEngine) RunDuckyScript(ctx context.Context, duckyCode string, log
 		return fmt.Errorf("duckyscript compile error: %w", err)
 	}
 	return e.RunJS(ctx, jsCode, logWriter)
+}
+
+// Run executes code as JavaScript or DuckyScript based on scriptType or fileName.
+func (e *ScriptEngine) Run(ctx context.Context, scriptType, fileName, code string, logWriter io.Writer) error {
+	if DetectScriptType(scriptType, fileName) == TypeJavaScript {
+		return e.RunJS(ctx, code, logWriter)
+	}
+	return e.RunDuckyScript(ctx, code, logWriter)
 }

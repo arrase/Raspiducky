@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/arrase/Raspiducky/pkg/scripting"
 )
 
 const (
@@ -16,6 +19,12 @@ const (
 	defaultEnter     = "ENTER\n"
 	defaultJSDelay   = "    delay(200);\n"
 	duckyExt         = ".ducky"
+	scriptsMetaFile  = "scripts_meta.json"
+)
+
+var (
+	ErrInvalidScriptName = errors.New("invalid script name")
+	ErrScriptNotFound    = errors.New("script not found")
 )
 
 // ScriptManager manages saving, loading, and deleting payload scripts.
@@ -34,7 +43,6 @@ func NewScriptManager(storageDir string) (*ScriptManager, error) {
 		storageDir: storageDir,
 	}
 
-	// Seed default scripts if directory is empty
 	if err := sm.seedDefaultScripts(); err != nil {
 		log.Printf("[Scripts] Failed to seed default scripts: %v", err)
 	}
@@ -47,6 +55,42 @@ func isScriptFile(name string) bool {
 	return strings.HasSuffix(lower, duckyExt) || strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".txt")
 }
 
+func (sm *ScriptManager) loadDescriptionsLocked() map[string]string {
+	descriptions := make(map[string]string)
+	data, err := os.ReadFile(filepath.Join(sm.storageDir, scriptsMetaFile))
+	if err == nil {
+		_ = json.Unmarshal(data, &descriptions)
+	}
+	return descriptions
+}
+
+func (sm *ScriptManager) saveDescriptionsLocked(descriptions map[string]string) {
+	if data, err := json.MarshalIndent(descriptions, "", "  "); err == nil {
+		_ = os.WriteFile(filepath.Join(sm.storageDir, scriptsMetaFile), data, 0644)
+	}
+}
+
+func extractDefaultDescription(content, scriptType string) string {
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToUpper(trimmed), "REM ") {
+			if desc := strings.TrimSpace(trimmed[4:]); desc != "" {
+				return desc
+			}
+		}
+		if strings.HasPrefix(trimmed, "//") {
+			if desc := strings.TrimSpace(strings.TrimPrefix(trimmed, "//")); desc != "" {
+				return desc
+			}
+		}
+		break
+	}
+	return fmt.Sprintf("Saved %s payload", scriptType)
+}
+
 // ListScripts returns all saved scripts from disk.
 func (sm *ScriptManager) ListScripts() ([]Script, error) {
 	sm.mu.RLock()
@@ -57,6 +101,7 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 		return nil, fmt.Errorf("failed to read scripts directory: %w", err)
 	}
 
+	descriptions := sm.loadDescriptionsLocked()
 	scripts := make([]Script, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -81,16 +126,18 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 			modTime = info.ModTime()
 		}
 
-		scriptType := "duckyscript"
-		if strings.HasSuffix(strings.ToLower(name), ".js") {
-			scriptType = "javascript"
+		content := string(contentBytes)
+		scriptType := scripting.DetectScriptType("", name)
+		desc := descriptions[name]
+		if desc == "" {
+			desc = extractDefaultDescription(content, scriptType)
 		}
 
 		scripts = append(scripts, Script{
 			Name:        name,
 			Type:        scriptType,
-			Content:     string(contentBytes),
-			Description: fmt.Sprintf("Saved %s payload", scriptType),
+			Content:     content,
+			Description: desc,
 			UpdatedAt:   modTime,
 		})
 	}
@@ -101,18 +148,11 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 func (sm *ScriptManager) resolveScriptPath(name string) (string, error) {
 	if name == "" || name == "." || name == ".." ||
 		strings.ContainsAny(name, "/\\\x00") ||
-		strings.Contains(name, "..") ||
 		filepath.Base(name) != name {
-		return "", errors.New("invalid script name")
+		return "", ErrInvalidScriptName
 	}
 
-	cleanDir := filepath.Clean(sm.storageDir)
-	filePath := filepath.Join(cleanDir, name)
-	if filepath.Dir(filePath) != cleanDir {
-		return "", errors.New("invalid script path")
-	}
-
-	return filePath, nil
+	return filepath.Join(filepath.Clean(sm.storageDir), name), nil
 }
 
 func normalizeScriptName(name, scriptType string) string {
@@ -127,7 +167,7 @@ func normalizeScriptName(name, scriptType string) string {
 	if strings.TrimSpace(stem) == "" {
 		return ""
 	}
-	if strings.EqualFold(scriptType, "javascript") || strings.EqualFold(scriptType, "js") {
+	if scripting.DetectScriptType(scriptType, name) == scripting.TypeJavaScript {
 		return stem + ".js"
 	}
 	if strings.HasSuffix(lower, ".txt") {
@@ -154,6 +194,12 @@ func (sm *ScriptManager) SaveScript(s Script) (string, error) {
 		return "", fmt.Errorf("failed to write script file: %w", err)
 	}
 
+	if strings.TrimSpace(s.Description) != "" {
+		descriptions := sm.loadDescriptionsLocked()
+		descriptions[normalized] = strings.TrimSpace(s.Description)
+		sm.saveDescriptionsLocked(descriptions)
+	}
+
 	return normalized, nil
 }
 
@@ -168,11 +214,17 @@ func (sm *ScriptManager) DeleteScript(name string) error {
 	defer sm.mu.Unlock()
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return fmt.Errorf("script '%s' not found", name)
+		return fmt.Errorf("%w: '%s'", ErrScriptNotFound, name)
 	}
 
 	if err := os.Remove(filePath); err != nil {
 		return fmt.Errorf("failed to delete script file: %w", err)
+	}
+
+	descriptions := sm.loadDescriptionsLocked()
+	if _, ok := descriptions[name]; ok {
+		delete(descriptions, name)
+		sm.saveDescriptionsLocked(descriptions)
 	}
 
 	return nil

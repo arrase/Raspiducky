@@ -1,7 +1,6 @@
 package hid
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -45,9 +44,21 @@ func TestLEDWatcher_GetStateAndSubscribe(t *testing.T) {
 	}
 }
 
-func TestLEDWatcher_SetReader_MultipleReaders(t *testing.T) {
+func TestLEDWatcher_MultiByteReadAndSetDevicePath(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	tmpDir := t.TempDir()
+	dev1 := filepath.Join(tmpDir, "hidg0_1")
+	dev2 := filepath.Join(tmpDir, "hidg0_2")
+
+	// Write 2 consecutive LED state bytes into dev1 to verify buf[0:n] are all processed
+	if err := os.WriteFile(dev1, []byte{LEDCapsLock, LEDCapsLock | LEDNumLock}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dev2, []byte{LEDScrollLock}, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	watcher := NewLEDWatcher(ctx, "")
 	defer watcher.Close()
@@ -55,23 +66,25 @@ func TestLEDWatcher_SetReader_MultipleReaders(t *testing.T) {
 	ch, unsubscribe := watcher.Subscribe()
 	defer unsubscribe()
 
-	// First custom reader
-	watcher.SetReader(bytes.NewReader([]byte{LEDCapsLock | LEDNumLock}))
+	watcher.SetDevicePath(dev1)
 
-	select {
-	case state := <-ch:
-		if !state.CapsLock || !state.NumLock {
-			t.Errorf("Expected CapsLock and NumLock to be true, got %+v", state)
+	var gotStates []LEDState
+	for len(gotStates) < 2 {
+		select {
+		case st := <-ch:
+			gotStates = append(gotStates, st)
+		case <-time.After(1 * time.Second):
+			t.Fatalf("Timeout waiting for multi-byte LED states, got %d: %+v", len(gotStates), gotStates)
 		}
-	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for first LED state update via reader")
+	}
+	if !gotStates[0].CapsLock || gotStates[0].NumLock {
+		t.Errorf("Expected 1st state CapsLock only, got %+v", gotStates[0])
+	}
+	if !gotStates[1].CapsLock || !gotStates[1].NumLock {
+		t.Errorf("Expected 2nd state CapsLock+NumLock, got %+v", gotStates[1])
 	}
 
-	// Wait briefly for first reader to hit EOF and clear itself
-	time.Sleep(50 * time.Millisecond)
-
-	// Second custom reader should still be processed by readLoop
-	watcher.SetReader(bytes.NewReader([]byte{LEDScrollLock}))
+	watcher.SetDevicePath(dev2)
 
 	select {
 	case state := <-ch:
@@ -79,7 +92,7 @@ func TestLEDWatcher_SetReader_MultipleReaders(t *testing.T) {
 			t.Errorf("Expected only ScrollLock to be true, got %+v", state)
 		}
 	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for second LED state update via reader")
+		t.Fatal("Timeout waiting for second device LED state update")
 	}
 }
 
