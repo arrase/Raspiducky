@@ -53,6 +53,8 @@ Raspiducky natively parses and executes standard Hak5 Rubber Ducky v1 syntax. Wh
 | `MENU` / `APP` | `MENU` | Opens context menu (Shift + F10 or App key). |
 | `TAB`, `ESCAPE`, `SPACE` | `TAB` | Standard navigation keys. |
 | `UP`, `DOWN`, `LEFT`, `RIGHT` | `UPARROW` | Arrow navigation keys. |
+| `HOLD` | `HOLD SHIFT` or `HOLD DOWNARROW` | Holds down the specified key(s) until released. |
+| `RELEASE` | `RELEASE SHIFT` or `RELEASE DOWNARROW` | Releases previously held key(s). |
 
 ### DuckyScript Example
 
@@ -95,6 +97,22 @@ Simulates pressing a key combination. Key tokens are separated by spaces.
 press("GUI R");
 press("CTRL ALT DELETE");
 press("SHIFT TAB");
+```
+
+#### `hold(keys: string): void`
+Holds down one or more keys without releasing them until `release()` is called or the script finishes.
+```javascript
+hold("SHIFT");
+press("DOWNARROW");
+release("SHIFT");
+```
+
+#### `release(keys: string): void`
+Releases one or more previously held keys.
+```javascript
+hold("CTRL SHIFT");
+delay(500);
+release("CTRL SHIFT");
 ```
 
 #### `layout(lang: string): void`

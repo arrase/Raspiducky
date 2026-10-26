@@ -183,3 +183,143 @@ func TestKeyboard_TypingSpeedAndCancel(t *testing.T) {
 		t.Errorf("Expected DeadlineExceeded in TypeString waitKeyDelay, got %v", err)
 	}
 }
+
+func TestKeyboard_HoldAndRelease(t *testing.T) {
+	kbd, err := NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
+	}
+	defer kbd.Close()
+
+	var buf bytes.Buffer
+	kbd.SetWriter(&buf)
+	kbd.SetTypingSpeed(0, 0)
+
+	ctx := context.Background()
+
+	// Hold SHIFT and DOWNARROW
+	if err := kbd.Hold(ctx, "SHIFT"); err != nil {
+		t.Fatalf("Hold SHIFT failed: %v", err)
+	}
+	if err := kbd.Hold(ctx, "DOWNARROW"); err != nil {
+		t.Fatalf("Hold DOWNARROW failed: %v", err)
+	}
+	if err := kbd.Hold(ctx, "a"); err != nil {
+		t.Fatalf("Hold a failed: %v", err)
+	}
+	// Duplicate hold should not duplicate keycode
+	if err := kbd.Hold(ctx, "DOWNARROW"); err != nil {
+		t.Fatalf("Hold duplicate DOWNARROW failed: %v", err)
+	}
+
+	// Release DOWNARROW while keeping SHIFT and a held
+	if err := kbd.Release(ctx, "DOWNARROW"); err != nil {
+		t.Fatalf("Release DOWNARROW failed: %v", err)
+	}
+	// Release a while keeping SHIFT held
+	if err := kbd.Release(ctx, "a"); err != nil {
+		t.Fatalf("Release a failed: %v", err)
+	}
+	// Release SHIFT
+	if err := kbd.Release(ctx, "SHIFT"); err != nil {
+		t.Fatalf("Release SHIFT failed: %v", err)
+	}
+
+	data := buf.Bytes()
+	if len(data) != 7*8 {
+		t.Fatalf("Expected 56 bytes (7 reports), got %d", len(data))
+	}
+
+	assertReport(t, data[0:8], ModLeftShift, 0)
+	assertReport(t, data[8:16], ModLeftShift, KeyDown)
+	if data[16] != ModLeftShift || data[18] != KeyDown || data[19] != KeyA {
+		t.Errorf("Unexpected 3rd report: %v", data[16:24])
+	}
+	if data[24] != ModLeftShift || data[26] != KeyDown || data[27] != KeyA || data[28] != 0 {
+		t.Errorf("Unexpected 4th report (duplicate hold): %v", data[24:32])
+	}
+	assertReport(t, data[32:40], ModLeftShift, KeyA)
+	assertReport(t, data[40:48], ModLeftShift, 0)
+	assertReport(t, data[48:56], 0, 0)
+
+	// Hold multiple keys simultaneously (LEFTARROW, UPARROW, CTRL) and release one by one
+	buf.Reset()
+	if err := kbd.Hold(ctx, "CTRL LEFTARROW UPARROW"); err != nil {
+		t.Fatalf("Hold combo failed: %v", err)
+	}
+	if err := kbd.Release(ctx, "LEFTARROW"); err != nil {
+		t.Fatalf("Release LEFTARROW failed: %v", err)
+	}
+	if err := kbd.Release(ctx, "CTRL"); err != nil {
+		t.Fatalf("Release CTRL failed: %v", err)
+	}
+	if err := kbd.Release(ctx, "UPARROW"); err != nil {
+		t.Fatalf("Release UPARROW failed: %v", err)
+	}
+
+	data = buf.Bytes()
+	if len(data) != 4*8 {
+		t.Fatalf("Expected 32 bytes (4 reports), got %d", len(data))
+	}
+	if data[0] != ModLeftCtrl || data[2] != KeyLeft || data[3] != KeyUp {
+		t.Errorf("Unexpected multi-hold report: %v", data[0:8])
+	}
+	assertReport(t, data[8:16], ModLeftCtrl, KeyUp)
+	assertReport(t, data[16:24], 0, KeyUp)
+	assertReport(t, data[24:32], 0, 0)
+
+	// Error handling for unknown key tokens
+	if err := kbd.Hold(ctx, "NONEXISTENT_KEY"); err == nil {
+		t.Errorf("Expected error for unknown key token in Hold")
+	}
+	if err := kbd.Release(ctx, "NONEXISTENT_KEY"); err == nil {
+		t.Errorf("Expected error for unknown key token in Release")
+	}
+}
+
+func TestKeyboard_HoldWithPressAndTypeString(t *testing.T) {
+	kbd, err := NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
+	}
+	defer kbd.Close()
+
+	var buf bytes.Buffer
+	kbd.SetWriter(&buf)
+	kbd.SetTypingSpeed(0, 0)
+
+	ctx := context.Background()
+
+	// Hold SHIFT
+	if err := kbd.Hold(ctx, "SHIFT"); err != nil {
+		t.Fatalf("Hold SHIFT failed: %v", err)
+	}
+
+	// Press DOWNARROW while SHIFT is held
+	if err := kbd.Press(ctx, "DOWNARROW"); err != nil {
+		t.Fatalf("Press DOWNARROW failed: %v", err)
+	}
+
+	// Type "b" while SHIFT is held
+	if err := kbd.TypeString(ctx, "b"); err != nil {
+		t.Fatalf("TypeString failed: %v", err)
+	}
+
+	// ReleaseKeys clears all held keys
+	if err := kbd.ReleaseKeys(); err != nil {
+		t.Fatalf("ReleaseKeys failed: %v", err)
+	}
+
+	data := buf.Bytes()
+	// 1 (Hold SHIFT) + 2 (Press DOWNARROW: down + release to held state) + 2 (TypeString "b": down + release to held state) + 1 (ReleaseKeys) = 6 reports = 48 bytes
+	if len(data) != 6*8 {
+		t.Fatalf("Expected 48 bytes (6 reports), got %d", len(data))
+	}
+
+	assertReport(t, data[0:8], ModLeftShift, 0)
+	assertReport(t, data[8:16], ModLeftShift, KeyDown)
+	assertReport(t, data[16:24], ModLeftShift, 0)
+	assertReport(t, data[24:32], ModLeftShift, KeyB)
+	assertReport(t, data[32:40], ModLeftShift, 0)
+	assertReport(t, data[40:48], 0, 0)
+}

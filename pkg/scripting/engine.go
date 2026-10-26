@@ -55,27 +55,22 @@ func (e *ScriptEngine) RunJS(ctx context.Context, jsCode string, logWriter io.Wr
 }
 
 func (e *ScriptEngine) injectKeyboard(ctx context.Context, vm *goja.Runtime) {
-	_ = vm.Set("type", func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) == 0 || goja.IsUndefined(call.Argument(0)) || goja.IsNull(call.Argument(0)) {
+	bindKeyFn := func(fn func(context.Context, string) error) func(goja.FunctionCall) goja.Value {
+		return func(call goja.FunctionCall) goja.Value {
+			if len(call.Arguments) == 0 || goja.IsUndefined(call.Argument(0)) || goja.IsNull(call.Argument(0)) {
+				return goja.Undefined()
+			}
+			if err := fn(ctx, call.Argument(0).String()); err != nil {
+				panic(vm.ToValue(err.Error()))
+			}
 			return goja.Undefined()
 		}
-		text := call.Argument(0).String()
-		if err := e.keyboard.TypeString(ctx, text); err != nil {
-			panic(vm.ToValue(err.Error()))
-		}
-		return goja.Undefined()
-	})
+	}
 
-	_ = vm.Set("press", func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) == 0 || goja.IsUndefined(call.Argument(0)) || goja.IsNull(call.Argument(0)) {
-			return goja.Undefined()
-		}
-		keys := call.Argument(0).String()
-		if err := e.keyboard.Press(ctx, keys); err != nil {
-			panic(vm.ToValue(err.Error()))
-		}
-		return goja.Undefined()
-	})
+	_ = vm.Set("type", bindKeyFn(e.keyboard.TypeString))
+	_ = vm.Set("press", bindKeyFn(e.keyboard.Press))
+	_ = vm.Set("hold", bindKeyFn(e.keyboard.Hold))
+	_ = vm.Set("release", bindKeyFn(e.keyboard.Release))
 
 	_ = vm.Set("layout", func(call goja.FunctionCall) goja.Value {
 		lang := call.Argument(0).String()
