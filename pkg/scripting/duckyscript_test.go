@@ -164,6 +164,16 @@ func TestParseDuckyScript_Errors(t *testing.T) {
 			src:     "TYPING_SPEED abc",
 			wantSub: "line 1",
 		},
+		{
+			name:    "hold missing arg",
+			src:     "HOLD",
+			wantSub: "line 1",
+		},
+		{
+			name:    "release missing arg",
+			src:     "RELEASE",
+			wantSub: "line 1",
+		},
 	}
 
 	for _, tc := range tests {
@@ -236,6 +246,45 @@ func TestParseDuckyScript_Commands(t *testing.T) {
 		`mouseClick("left");`,
 		`mouseClick("right");`,
 		`waitLED("CAPS", 2000);`,
+	}
+	expected := strings.Join(expectedLines, "\n")
+	if js != expected {
+		t.Errorf("got:\n%s\nwant:\n%s", js, expected)
+	}
+}
+
+func TestParseDuckyScript_HoldAndRelease(t *testing.T) {
+	src := strings.Join([]string{
+		"DEFAULT_DELAY 50",
+		"HOLD SHIFT",
+		"HOLD DOWNARROW",
+		"RELEASE DOWNARROW",
+		"hold ctrl-alt",
+		"release ctrl-alt",
+		"RELEASE SHIFT",
+		"REPEAT 2",
+	}, "\n")
+
+	js, err := ParseDuckyScript(src)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedLines := []string{
+		`// Default delay set to 50 ms`,
+		`hold("SHIFT");`,
+		`delay(50);`,
+		`hold("DOWNARROW");`,
+		`delay(50);`,
+		`release("DOWNARROW");`,
+		`delay(50);`,
+		`hold("ctrl alt");`,
+		`delay(50);`,
+		`release("ctrl alt");`,
+		`delay(50);`,
+		`release("SHIFT");`,
+		`delay(50);`,
+		`for (let _i = 0; _i < 2; _i++) { release("SHIFT"); delay(50); }`,
 	}
 	expected := strings.Join(expectedLines, "\n")
 	if js != expected {

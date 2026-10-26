@@ -24,6 +24,8 @@ func TestScriptEngine_MouseClickAndMoveClamping(t *testing.T) {
 	js := `
 type();
 press();
+hold();
+release();
 mouseMove(200, -300);
 mouseMoveTo(-50, 50000);
 mouseClick();
@@ -160,5 +162,45 @@ func TestScriptEngine_DuckyScriptQuotes(t *testing.T) {
 			t.Errorf("char %d: expected (mod=0x%02x, key=KeyApostrophe), got (mod=0x%02x, key=0x%02x)",
 				i, wantMod, data[offset], data[offset+2])
 		}
+	}
+}
+
+func TestScriptEngine_DuckyScriptHoldAndRelease(t *testing.T) {
+	var kbdBuf bytes.Buffer
+	kbd, err := hid.NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
+	}
+	kbd.SetWriter(&kbdBuf)
+	kbd.SetTypingSpeed(0, 0)
+
+	engine := NewScriptEngine(kbd, nil, nil)
+	var logBuf bytes.Buffer
+
+	ducky := "HOLD SHIFT\nDOWNARROW\nRELEASE SHIFT\n"
+	if err := engine.RunDuckyScript(context.Background(), ducky, &logBuf); err != nil {
+		t.Fatalf("RunDuckyScript failed: %v", err)
+	}
+
+	data := kbdBuf.Bytes()
+	// 1st report (8B): HOLD SHIFT -> (ModLeftShift, 0)
+	// 2nd report (8B): DOWNARROW press -> (ModLeftShift, KeyDown)
+	// 3rd report (8B): DOWNARROW release -> (ModLeftShift, 0)
+	// 4th report (8B): RELEASE SHIFT -> (0, 0)
+	if len(data) != 32 {
+		t.Fatalf("expected 32 bytes of keyboard reports, got %d", len(data))
+	}
+
+	if data[0] != hid.ModLeftShift || data[2] != 0 {
+		t.Errorf("expected HOLD SHIFT report (ModLeftShift, 0), got (0x%02x, 0x%02x)", data[0], data[2])
+	}
+	if data[8] != hid.ModLeftShift || data[10] != hid.KeyDown {
+		t.Errorf("expected DOWNARROW press report (ModLeftShift, KeyDown), got (0x%02x, 0x%02x)", data[8], data[10])
+	}
+	if data[16] != hid.ModLeftShift || data[18] != 0 {
+		t.Errorf("expected DOWNARROW release report (ModLeftShift, 0), got (0x%02x, 0x%02x)", data[16], data[18])
+	}
+	if data[24] != 0 || data[26] != 0 {
+		t.Errorf("expected RELEASE SHIFT report (0, 0), got (0x%02x, 0x%02x)", data[24], data[26])
 	}
 }

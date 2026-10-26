@@ -188,6 +188,45 @@ func translateMouseCommand(lineNum int, cmd, arg string) (string, bool, error) {
 	}
 }
 
+func parseTypingSpeed(lineNum int, arg string) (string, error) {
+	f := strings.Fields(arg)
+	if len(f) == 0 || len(f) > 2 {
+		return "", fmt.Errorf("line %d: TYPING_SPEED requires 1 or 2 integer arguments", lineNum)
+	}
+	d, err := strconv.Atoi(f[0])
+	if err != nil || d < 0 {
+		return "", fmt.Errorf("line %d: invalid TYPING_SPEED delay %q", lineNum, f[0])
+	}
+	j := 0
+	if len(f) == 2 {
+		j, err = strconv.Atoi(f[1])
+		if err != nil || j < 0 {
+			return "", fmt.Errorf("line %d: invalid TYPING_SPEED jitter %q", lineNum, f[1])
+		}
+	}
+	return fmt.Sprintf("typingSpeed(%d, %d);", d, j), nil
+}
+
+func parseWaitLED(lineNum int, arg string) (string, error) {
+	f := strings.Fields(arg)
+	if len(f) > 2 {
+		return "", fmt.Errorf("line %d: invalid WAIT_LED arguments %q", lineNum, strings.TrimSpace(arg))
+	}
+	filter := "ANY"
+	timeout := 5000
+	if len(f) >= 1 {
+		filter = f[0]
+	}
+	if len(f) == 2 {
+		var err error
+		timeout, err = strconv.Atoi(f[1])
+		if err != nil || timeout <= 0 {
+			return "", fmt.Errorf("line %d: invalid WAIT_LED timeout %q", lineNum, f[1])
+		}
+	}
+	return fmt.Sprintf("waitLED(%s, %d);", strconv.Quote(filter), timeout), nil
+}
+
 func translateCommandToJS(lineNum int, cmd, arg, line string) (string, bool, error) {
 	if js, ok, err := translateMouseCommand(lineNum, cmd, arg); ok || err != nil {
 		return js, true, err
@@ -208,50 +247,28 @@ func translateCommandToJS(lineNum int, cmd, arg, line string) (string, bool, err
 		return fmt.Sprintf("layout(%s);", strconv.Quote(trimmed)), false, nil
 
 	case "TYPING_SPEED":
-		f := strings.Fields(arg)
-		if len(f) == 0 || len(f) > 2 {
-			return "", false, fmt.Errorf("line %d: TYPING_SPEED requires 1 or 2 integer arguments", lineNum)
-		}
-		d, err := strconv.Atoi(f[0])
-		if err != nil || d < 0 {
-			return "", false, fmt.Errorf("line %d: invalid TYPING_SPEED delay %q", lineNum, f[0])
-		}
-		j := 0
-		if len(f) == 2 {
-			j, err = strconv.Atoi(f[1])
-			if err != nil || j < 0 {
-				return "", false, fmt.Errorf("line %d: invalid TYPING_SPEED jitter %q", lineNum, f[1])
-			}
-		}
-		return fmt.Sprintf("typingSpeed(%d, %d);", d, j), false, nil
+		js, err := parseTypingSpeed(lineNum, arg)
+		return js, false, err
 
 	case "WAIT_LED":
-		f := strings.Fields(arg)
-		if len(f) > 2 {
-			return "", false, fmt.Errorf("line %d: invalid WAIT_LED arguments %q", lineNum, strings.TrimSpace(arg))
+		js, err := parseWaitLED(lineNum, arg)
+		return js, true, err
+
+	case "HOLD", "RELEASE":
+		keys := parseKeyTokens(arg)
+		if keys == "" {
+			return "", false, fmt.Errorf("line %d: %s requires a key argument", lineNum, cmd)
 		}
-		filter := "ANY"
-		timeout := 5000
-		if len(f) >= 1 {
-			filter = f[0]
-		}
-		if len(f) == 2 {
-			var err error
-			timeout, err = strconv.Atoi(f[1])
-			if err != nil || timeout <= 0 {
-				return "", false, fmt.Errorf("line %d: invalid WAIT_LED timeout %q", lineNum, f[1])
-			}
-		}
-		return fmt.Sprintf("waitLED(%s, %d);", strconv.Quote(filter), timeout), true, nil
+		return fmt.Sprintf("%s(%s);", strings.ToLower(cmd), strconv.Quote(keys)), true, nil
 
 	default:
 		return parseComboOrSingleKey(line), true, nil
 	}
 }
 
-func parseComboOrSingleKey(line string) string {
+func parseKeyTokens(s string) string {
 	var tokens []string
-	for _, field := range strings.Fields(line) {
+	for _, field := range strings.Fields(s) {
 		if field == "-" {
 			tokens = append(tokens, "-")
 			continue
@@ -270,5 +287,9 @@ func parseComboOrSingleKey(line string) string {
 			tokens = append(tokens, "-")
 		}
 	}
-	return fmt.Sprintf("press(%s);", strconv.Quote(strings.Join(tokens, " ")))
+	return strings.Join(tokens, " ")
+}
+
+func parseComboOrSingleKey(line string) string {
+	return fmt.Sprintf("press(%s);", strconv.Quote(parseKeyTokens(line)))
 }
