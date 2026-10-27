@@ -50,6 +50,7 @@ STRING	tabbed
 		`delay(50);`,
 		`for (let _i = 0; _i < 3; _i++) { type("a"); delay(50); }`,
 		`type("b");`,
+		`delay(50);`,
 		`press("ENTER");`,
 		`delay(50);`,
 		`delay(200);`,

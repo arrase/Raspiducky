@@ -33,8 +33,8 @@ func TestKeyboard_TypeString(t *testing.T) {
 	if err := kbd.TypeString(ctx, "aA"); err != nil {
 		t.Fatalf("TypeString failed: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
-		t.Errorf("Expected TypeString(\"aA\") to hold at least 40ms, took %v", elapsed)
+	if elapsed := time.Since(start); elapsed < 140*time.Millisecond {
+		t.Errorf("Expected TypeString(\"aA\") to hold and pause at least 140ms, took %v", elapsed)
 	}
 
 	// Each character writes 1 press report (8 bytes) + 1 release report (8 bytes) = 16 bytes
@@ -64,8 +64,8 @@ func TestKeyboard_Press(t *testing.T) {
 	if err := kbd.Press(ctx, "GUI r"); err != nil {
 		t.Fatalf("Press failed: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
-		t.Errorf("Expected Press(\"GUI r\") to hold at least 40ms, took %v", elapsed)
+	if elapsed := time.Since(start); elapsed < 105*time.Millisecond {
+		t.Errorf("Expected Press(\"GUI r\") to hold and pause at least 105ms, took %v", elapsed)
 	}
 	data := buf.Bytes()
 	// Modifier-only report (8B) + modifier+key report (8B) + release report (8B) = 24 bytes
@@ -81,8 +81,8 @@ func TestKeyboard_Press(t *testing.T) {
 	if err := kbd.Press(ctx, "ENTER"); err != nil {
 		t.Fatalf("Press ENTER failed: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
-		t.Errorf("Expected Press(\"ENTER\") to hold at least 20ms, took %v", elapsed)
+	if elapsed := time.Since(start); elapsed < 70*time.Millisecond {
+		t.Errorf("Expected Press(\"ENTER\") to hold and pause at least 70ms, took %v", elapsed)
 	}
 	data = buf.Bytes()
 	if len(data) != 16 {
@@ -165,19 +165,42 @@ func TestKeyboard_TypingSpeedAndCancel(t *testing.T) {
 	var buf bytes.Buffer
 	kbd.SetWriter(&buf)
 	kbd.SetTypingSpeed(5, 2)
+	if got := kbd.holdDuration(); got != minKeyHoldDuration {
+		t.Errorf("Expected holdDuration %v for 5ms delay, got %v", minKeyHoldDuration, got)
+	}
 	if err := kbd.TypeString(context.Background(), "a"); err != nil {
 		t.Fatalf("TypeString with delay and jitter failed: %v", err)
 	}
 
-	kbd.SetTypingSpeed(500, 0)
+	kbd.SetTypingSpeed(50, 0)
+	if got := kbd.holdDuration(); got != 50*time.Millisecond {
+		t.Errorf("Expected holdDuration 50ms, got %v", got)
+	}
 
-	ctxPress, cancelPress := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	kbd.SetTypingSpeed(500, 0)
+	if got := kbd.holdDuration(); got != maxKeyHoldDuration {
+		t.Errorf("Expected holdDuration capped at %v, got %v", maxKeyHoldDuration, got)
+	}
+
+	ctxHoldPress, cancelHoldPress := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancelHoldPress()
+	if err := kbd.Press(ctxHoldPress, "ENTER"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Expected DeadlineExceeded in Press holdDuration, got %v", err)
+	}
+
+	ctxPress, cancelPress := context.WithTimeout(context.Background(), 130*time.Millisecond)
 	defer cancelPress()
 	if err := kbd.Press(ctxPress, "ENTER"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("Expected DeadlineExceeded in Press waitKeyDelay, got %v", err)
 	}
 
-	ctxType, cancelType := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	ctxHoldType, cancelHoldType := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancelHoldType()
+	if err := kbd.TypeString(ctxHoldType, "a"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Expected DeadlineExceeded in TypeString holdDuration, got %v", err)
+	}
+
+	ctxType, cancelType := context.WithTimeout(context.Background(), 130*time.Millisecond)
 	defer cancelType()
 	if err := kbd.TypeString(ctxType, "a"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("Expected DeadlineExceeded in TypeString waitKeyDelay, got %v", err)

@@ -81,7 +81,7 @@ func ParseDuckyScript(duckySource string) (string, error) {
 			continue
 		}
 
-		jsCmd, appliesDelay, err := translateCommandToJS(lineNum, cmd, arg, line)
+		jsCmd, appliesDelay, err := translateCommandToJS(lineNum, cmd, arg, line, defaultDelay)
 		if err != nil {
 			return "", err
 		}
@@ -227,7 +227,7 @@ func parseWaitLED(lineNum int, arg string) (string, error) {
 	return fmt.Sprintf("waitLED(%s, %d);", strconv.Quote(filter), timeout), nil
 }
 
-func translateCommandToJS(lineNum int, cmd, arg, line string) (string, bool, error) {
+func translateCommandToJS(lineNum int, cmd, arg, line string, defaultDelay int) (string, bool, error) {
 	if js, ok, err := translateMouseCommand(lineNum, cmd, arg); ok || err != nil {
 		return js, true, err
 	}
@@ -237,6 +237,9 @@ func translateCommandToJS(lineNum int, cmd, arg, line string) (string, bool, err
 		return fmt.Sprintf("type(%s);", strconv.Quote(arg)), true, nil
 
 	case "STRINGLN":
+		if defaultDelay > 0 {
+			return fmt.Sprintf("type(%s);\ndelay(%d);\npress(\"ENTER\");", strconv.Quote(arg), defaultDelay), true, nil
+		}
 		return fmt.Sprintf("type(%s);\npress(\"ENTER\");", strconv.Quote(arg)), true, nil
 
 	case "LAYOUT":
