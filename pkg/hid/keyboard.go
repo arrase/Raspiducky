@@ -74,7 +74,11 @@ func (kbd *Keyboard) GetTypingSpeed() (int, int) {
 	return kbd.keyDelayMs, kbd.keyDelayJitterMs
 }
 
-const minKeyHoldDuration = 20 * time.Millisecond
+const (
+	minKeyHoldDuration = 35 * time.Millisecond
+	maxKeyHoldDuration = 100 * time.Millisecond
+	minKeyDelayMs      = 35
+)
 
 func sleepContext(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
@@ -88,6 +92,20 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
+func (kbd *Keyboard) holdDuration() time.Duration {
+	kbd.mu.Lock()
+	delay := time.Duration(kbd.keyDelayMs) * time.Millisecond
+	kbd.mu.Unlock()
+
+	if delay < minKeyHoldDuration {
+		return minKeyHoldDuration
+	}
+	if delay > maxKeyHoldDuration {
+		return maxKeyHoldDuration
+	}
+	return delay
+}
+
 func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
 	kbd.mu.Lock()
 	delay := kbd.keyDelayMs
@@ -95,6 +113,9 @@ func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
 	kbd.mu.Unlock()
 
 	totalDelay := delay
+	if totalDelay < minKeyDelayMs {
+		totalDelay = minKeyDelayMs
+	}
 	if jitter > 0 {
 		totalDelay += rand.Intn(jitter)
 	}
@@ -236,11 +257,13 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 		return err
 	}
 
+	hold := kbd.holdDuration()
+
 	if modifiers != 0 && len(keycodes) > 0 {
 		if err := kbd.WriteReport(kbd.activeReport(modifiers)); err != nil {
 			return err
 		}
-		if err := sleepContext(ctx, minKeyHoldDuration); err != nil {
+		if err := sleepContext(ctx, hold); err != nil {
 			_ = kbd.ReleaseKeys()
 			return err
 		}
@@ -250,7 +273,7 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 		return err
 	}
 
-	if err := sleepContext(ctx, minKeyHoldDuration); err != nil {
+	if err := sleepContext(ctx, hold); err != nil {
 		_ = kbd.ReleaseKeys()
 		return err
 	}
@@ -279,7 +302,7 @@ func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
 		if err := kbd.WriteReport(kbd.activeReport(report[0], report.KeyCodes()...)); err != nil {
 			return err
 		}
-		if err := sleepContext(ctx, minKeyHoldDuration); err != nil {
+		if err := sleepContext(ctx, kbd.holdDuration()); err != nil {
 			_ = kbd.ReleaseKeys()
 			return err
 		}
