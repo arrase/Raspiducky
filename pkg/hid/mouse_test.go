@@ -10,7 +10,7 @@ import (
 
 func TestMouse_MoveAndButtons(t *testing.T) {
 	m := NewMouse("")
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	var buf bytes.Buffer
 	m.SetWriter(&buf)
@@ -70,7 +70,7 @@ func TestMouse_SetDevicePath(t *testing.T) {
 	}
 
 	m := NewMouse(dev1)
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	if err := m.Move(1, 2); err != nil {
 		t.Fatalf("Move on dev1 failed: %v", err)

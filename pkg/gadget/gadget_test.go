@@ -2,6 +2,7 @@ package gadget
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,7 +199,7 @@ func TestConfig_Validate(t *testing.T) {
 	noFuncs := validTestConfig()
 	noFuncs.Keyboard = false
 	noFuncs.Mouse = false
-	if err := noFuncs.Validate(); err != ErrNoFunctionsEnabled {
+	if err := noFuncs.Validate(); !errors.Is(err, ErrNoFunctionsEnabled) {
 		t.Errorf("expected ErrNoFunctionsEnabled, got: %v", err)
 	}
 

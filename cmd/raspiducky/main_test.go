@@ -23,9 +23,9 @@ func TestInitHIDDevicesAndRunScriptCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initHIDDevices failed: %v", err)
 	}
-	defer kbd.Close()
-	defer mouse.Close()
-	defer ledWatcher.Close()
+	defer func() { _ = kbd.Close() }()
+	defer func() { _ = mouse.Close() }()
+	defer func() { _ = ledWatcher.Close() }()
 
 	delay, jitter := kbd.GetTypingSpeed()
 	if delay != 25 || jitter != 0 {

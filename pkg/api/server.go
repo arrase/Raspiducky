@@ -1,3 +1,4 @@
+// Package api provides the HTTP REST API, WebSocket hub, and embedded web dashboard for Raspiducky.
 package api
 
 import (
@@ -144,7 +145,7 @@ func (s *Server) listenLEDState() {
 }
 
 // REST Handlers
-func (s *Server) handleGetGadget(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetGadget(w http.ResponseWriter, _ *http.Request) {
 	status := s.gadgetManager.GetStatus()
 	writeJSON(w, http.StatusOK, status)
 }
@@ -165,7 +166,7 @@ func (s *Server) handlePostGadget(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
-func (s *Server) handleGetScripts(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetScripts(w http.ResponseWriter, _ *http.Request) {
 	scripts, err := s.scriptManager.ListScripts()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -215,7 +216,7 @@ func (s *Server) handleDeleteScript(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetJob(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.runnerEngine.GetActiveJob())
 }
 
@@ -239,7 +240,7 @@ func (s *Server) handleRunScript(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleStopScript(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleStopScript(w http.ResponseWriter, _ *http.Request) {
 	if err := s.runnerEngine.Stop(); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

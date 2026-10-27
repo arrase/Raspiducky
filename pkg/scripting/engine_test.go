@@ -66,7 +66,7 @@ func TestScriptEngine_WaitLEDNoArgs(t *testing.T) {
 	defer cancel()
 
 	ledWatcher := hid.NewLEDWatcher(ctx, "")
-	defer ledWatcher.Close()
+	defer func() { _ = ledWatcher.Close() }()
 
 	engine := NewScriptEngine(nil, nil, ledWatcher)
 	var logBuf bytes.Buffer

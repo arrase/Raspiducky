@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// USB HID mouse button bitmasks and coordinate bounds.
 const (
 	MouseButtonLeft   uint8 = 0x01
 	MouseButtonRight  uint8 = 0x02

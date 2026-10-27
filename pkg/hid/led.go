@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// USB HID keyboard LED indicator bitmasks.
 const (
 	LEDNumLock    uint8 = 1 << 0 // 0x01
 	LEDCapsLock   uint8 = 1 << 1 // 0x02

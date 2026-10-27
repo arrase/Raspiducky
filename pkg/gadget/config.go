@@ -1,3 +1,4 @@
+// Package gadget manages Linux USB ConfigFS gadget configurations and UDC bindings.
 package gadget
 
 import (
@@ -7,6 +8,7 @@ import (
 	"regexp"
 )
 
+// ErrNoFunctionsEnabled is returned when a gadget configuration has no USB functions enabled.
 var (
 	ErrNoFunctionsEnabled = errors.New("at least one USB function must be enabled")
 	hexIDRegex            = regexp.MustCompile(`^0x[0-9a-fA-F]{4}$`)
@@ -104,6 +106,7 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// Hardware endpoint costs per USB gadget function.
 const (
 	EndpointsEP0         = 1
 	EndpointsKeyboard    = 1 // Interrupt IN

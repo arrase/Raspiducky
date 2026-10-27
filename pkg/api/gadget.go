@@ -192,11 +192,12 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		gm.keyboard.SetDevicePath("")
 	}
 
-	if !cfg.Mouse {
+	switch {
+	case !cfg.Mouse:
 		gm.mouse.SetDevicePath("")
-	} else if !cfg.Keyboard {
+	case !cfg.Keyboard:
 		gm.mouse.SetDevicePath(filepath.Join(gm.devDir, "hidg0"))
-	} else {
+	default:
 		gm.mouse.SetDevicePath(filepath.Join(gm.devDir, "hidg1"))
 	}
 

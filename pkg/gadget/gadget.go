@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// Default ConfigFS paths, USB descriptor values, and function names.
 const (
 	DefaultBaseDir    = "/sys/kernel/config/usb_gadget"
 	DefaultGadgetName = "raspiducky"
@@ -63,9 +64,11 @@ var (
 		0x09, 0x31, 0x15, 0x00, 0x26, 0xff, 0x7f, 0x95, 0x02, 0x75, 0x10, 0x81, 0x02, 0xc0, 0xc0,
 	}
 
+	// ErrUDCNotFound is returned when no USB Device Controller is present in sysfs.
 	ErrUDCNotFound = errors.New("no UDC driver found in system")
 )
 
+// GadgetManager manages Linux USB ConfigFS directories and UDC lifecycle.
 type GadgetManager struct {
 	BaseDir    string
 	UDCDir     string
@@ -73,6 +76,7 @@ type GadgetManager struct {
 	mu         sync.Mutex
 }
 
+// NewGadgetManager creates a GadgetManager with default Linux ConfigFS, UDC, and debugfs paths.
 func NewGadgetManager() *GadgetManager {
 	return &GadgetManager{
 		BaseDir:    DefaultBaseDir,
@@ -113,10 +117,12 @@ func NewMockGadgetManager(rootDir, maxEndpoints string) (*GadgetManager, error) 
 	}, nil
 }
 
+// GadgetPath returns the full path to the raspiducky ConfigFS gadget directory.
 func (gm *GadgetManager) GadgetPath() string {
 	return filepath.Join(gm.BaseDir, DefaultGadgetName)
 }
 
+// GetUDCName returns the name of the first available UDC controller in sysfs.
 func (gm *GadgetManager) GetUDCName() (string, error) {
 	entries, err := os.ReadDir(gm.UDCDir)
 	if err != nil || len(entries) == 0 {
@@ -125,6 +131,7 @@ func (gm *GadgetManager) GetUDCName() (string, error) {
 	return entries[0].Name(), nil
 }
 
+// GetMaxEndpoints returns the maximum number of hardware USB endpoints supported by the active UDC.
 func (gm *GadgetManager) GetMaxEndpoints() (int, error) {
 	udcName, err := gm.GetUDCName()
 	if err != nil {
@@ -134,19 +141,7 @@ func (gm *GadgetManager) GetMaxEndpoints() (int, error) {
 	hwParamsPath := filepath.Join(gm.DebugFSDir, udcName, "hw_params")
 	data, err := os.ReadFile(hwParamsPath)
 	if err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "num_dev_ep") {
-				parts := strings.Split(line, ":")
-				if len(parts) == 2 {
-					val, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-					if err != nil {
-						return 0, fmt.Errorf("invalid num_dev_ep value format: %w", err)
-					}
-					return val, nil
-				}
-			}
-		}
-		return 0, errors.New("num_dev_ep not found in hw_params")
+		return parseHwParamsEndpoints(string(data))
 	}
 
 	if !os.IsNotExist(err) {
@@ -155,27 +150,45 @@ func (gm *GadgetManager) GetMaxEndpoints() (int, error) {
 
 	// Non-dwc2 controllers (dwc3, sunxi-musb, dummy_hcd) do not expose dwc2 hw_params.
 	// Check sysfs /sys/class/udc/<udc>/ep* if directory entries exist; otherwise return 0 (no fixed dwc2 limit).
-	udcSysPath := filepath.Join(gm.UDCDir, udcName)
-	if entries, readErr := os.ReadDir(udcSysPath); readErr == nil {
-		epCount := 0
-		hasEP0 := false
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), "ep") {
-				epCount++
-				if e.Name() == "ep0" {
-					hasEP0 = true
-				}
-			}
+	return countSysfsEndpoints(filepath.Join(gm.UDCDir, udcName)), nil
+}
+
+func parseHwParamsEndpoints(data string) (int, error) {
+	for _, line := range strings.Split(data, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "num_dev_ep") {
+			continue
 		}
-		if epCount > 0 {
-			if !hasEP0 {
-				epCount++
+		parts := strings.Split(line, ":")
+		if len(parts) == 2 {
+			val, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+			if err != nil {
+				return 0, fmt.Errorf("invalid num_dev_ep value format: %w", err)
 			}
-			return epCount, nil
+			return val, nil
 		}
 	}
+	return 0, errors.New("num_dev_ep not found in hw_params")
+}
 
-	return 0, nil
+func countSysfsEndpoints(udcSysPath string) int {
+	entries, err := os.ReadDir(udcSysPath)
+	if err != nil {
+		return 0
+	}
+	epCount := 0
+	hasEP0 := false
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "ep") {
+			epCount++
+			if e.Name() == "ep0" {
+				hasEP0 = true
+			}
+		}
+	}
+	if epCount > 0 && !hasEP0 {
+		epCount++
+	}
+	return epCount
 }
 
 // ValidateHardware validates the configuration and verifies UDC availability and hardware endpoint limits.
@@ -317,6 +330,7 @@ func (gm *GadgetManager) bindUDC(ctx context.Context, gadgetPath string) error {
 	return fmt.Errorf("failed binding to UDC %s: %w", udcName, bindErr)
 }
 
+// Deploy validates and deploys a USB gadget configuration to ConfigFS and binds it to the UDC.
 func (gm *GadgetManager) Deploy(ctx context.Context, cfg Config) error {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()

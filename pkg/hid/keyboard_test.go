@@ -22,7 +22,7 @@ func TestKeyboard_TypeString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	defer kbd.Close()
+	defer func() { _ = kbd.Close() }()
 
 	var buf bytes.Buffer
 	kbd.SetWriter(&buf)
@@ -53,7 +53,7 @@ func TestKeyboard_Press(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	defer kbd.Close()
+	defer func() { _ = kbd.Close() }()
 
 	var buf bytes.Buffer
 	kbd.SetWriter(&buf)
@@ -117,7 +117,7 @@ func TestKeyboard_DevicePathAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	defer kbd.Close()
+	defer func() { _ = kbd.Close() }()
 
 	if err := kbd.WriteReport(NewKeyboardReport(0, KeyA)); err != nil {
 		t.Fatalf("WriteReport to dev1 failed: %v", err)
@@ -143,7 +143,7 @@ func TestKeyboard_TypingSpeedAndCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	defer kbd.Close()
+	defer func() { _ = kbd.Close() }()
 
 	delay, jitter := kbd.GetTypingSpeed()
 	if delay != 10 || jitter != 0 {
@@ -212,7 +212,7 @@ func TestKeyboard_HoldAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	defer kbd.Close()
+	defer func() { _ = kbd.Close() }()
 
 	var buf bytes.Buffer
 	kbd.SetWriter(&buf)
@@ -305,7 +305,7 @@ func TestKeyboard_HoldWithPressAndTypeString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	defer kbd.Close()
+	defer func() { _ = kbd.Close() }()
 
 	var buf bytes.Buffer
 	kbd.SetWriter(&buf)

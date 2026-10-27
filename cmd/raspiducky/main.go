@@ -1,3 +1,4 @@
+// Package main provides the Raspiducky daemon and CLI entrypoint.
 package main
 
 import (
@@ -118,9 +119,9 @@ func runDaemon(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer kbd.Close()
-	defer mouse.Close()
-	defer ledWatcher.Close()
+	defer func() { _ = kbd.Close() }()
+	defer func() { _ = mouse.Close() }()
+	defer func() { _ = ledWatcher.Close() }()
 
 	server, err := api.NewServer(api.ServerOptions{
 		StorageDir:     *storageDir,
@@ -217,9 +218,9 @@ func runScriptCLI(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer kbd.Close()
-	defer mouse.Close()
-	defer ledWatcher.Close()
+	defer func() { _ = kbd.Close() }()
+	defer func() { _ = mouse.Close() }()
+	defer func() { _ = ledWatcher.Close() }()
 	defer func() { _ = kbd.ReleaseKeys() }()
 
 	engine := scripting.NewScriptEngine(kbd, mouse, ledWatcher)
@@ -288,7 +289,7 @@ func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, de
 	if err != nil {
 		return true, err
 	}
-	defer runResp.Body.Close()
+	defer func() { _ = runResp.Body.Close() }()
 
 	if runResp.StatusCode != http.StatusOK {
 		var errPayload map[string]string
@@ -306,6 +307,10 @@ func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, de
 		return true, err
 	}
 
+	return true, pollDaemonJob(ctx, client, baseURL, startPayload.JobID)
+}
+
+func pollDaemonJob(ctx context.Context, client *http.Client, baseURL, jobID string) error {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -313,43 +318,55 @@ func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, de
 		select {
 		case <-ctx.Done():
 			stopDaemonJob(client, baseURL)
-			return true, ctx.Err()
+			return ctx.Err()
 
 		case <-ticker.C:
-			statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/job", nil)
+			done, err := checkDaemonJobStatus(ctx, client, baseURL, jobID)
 			if err != nil {
-				if ctx.Err() != nil {
-					stopDaemonJob(client, baseURL)
-					return true, ctx.Err()
-				}
-				return true, err
+				return err
 			}
-			statusResp, err := client.Do(statusReq)
-			if err != nil {
-				if ctx.Err() != nil {
-					stopDaemonJob(client, baseURL)
-					return true, ctx.Err()
-				}
-				return true, err
-			}
-			var job *api.JobStatus
-			decodeErr := json.NewDecoder(statusResp.Body).Decode(&job)
-			_ = statusResp.Body.Close()
-			if decodeErr != nil || job == nil || job.ID != startPayload.JobID {
-				continue
-			}
-
-			switch job.Status {
-			case "completed":
-				return true, nil
-			case "failed":
-				if job.Error != "" {
-					return true, errors.New(job.Error)
-				}
-				return true, errors.New("script execution failed on daemon")
-			case "stopped":
-				return true, context.Canceled
+			if done {
+				return nil
 			}
 		}
+	}
+}
+
+func checkDaemonJobStatus(ctx context.Context, client *http.Client, baseURL, jobID string) (bool, error) {
+	statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/job", nil)
+	if err != nil {
+		if ctx.Err() != nil {
+			stopDaemonJob(client, baseURL)
+			return false, ctx.Err()
+		}
+		return false, err
+	}
+	statusResp, err := client.Do(statusReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			stopDaemonJob(client, baseURL)
+			return false, ctx.Err()
+		}
+		return false, err
+	}
+	var job *api.JobStatus
+	decodeErr := json.NewDecoder(statusResp.Body).Decode(&job)
+	_ = statusResp.Body.Close()
+	if decodeErr != nil || job == nil || job.ID != jobID {
+		return false, nil
+	}
+
+	switch job.Status {
+	case "completed":
+		return true, nil
+	case "failed":
+		if job.Error != "" {
+			return false, errors.New(job.Error)
+		}
+		return false, errors.New("script execution failed on daemon")
+	case "stopped":
+		return false, context.Canceled
+	default:
+		return false, nil
 	}
 }

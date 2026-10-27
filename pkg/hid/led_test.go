@@ -13,7 +13,7 @@ func TestLEDWatcher_GetStateAndSubscribe(t *testing.T) {
 	defer cancel()
 
 	watcher := NewLEDWatcher(ctx, "")
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	initialState := watcher.GetState()
 	if initialState.CapsLock || initialState.NumLock || initialState.ScrollLock {
@@ -61,7 +61,7 @@ func TestLEDWatcher_MultiByteReadAndSetDevicePath(t *testing.T) {
 	}
 
 	watcher := NewLEDWatcher(ctx, "")
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	ch, unsubscribe := watcher.Subscribe()
 	defer unsubscribe()

@@ -1,3 +1,4 @@
+// Package scripting provides the DuckyScript parser and Goja JavaScript execution engine.
 package scripting
 
 import (
@@ -8,6 +9,7 @@ import (
 	"strings"
 )
 
+// Supported payload script types.
 const (
 	TypeDuckyScript = "duckyscript"
 	TypeJavaScript  = "javascript"

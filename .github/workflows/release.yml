@@ -7,40 +7,45 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   build-and-release:
     name: Build & Upload Release Binaries
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+          cache: false
 
       - name: Build Binaries
         run: |
           mkdir -p release_assets
-          
+
           # Linux ARMv6 (Raspberry Pi Zero W / Zero / Model A)
           GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-armv6 ./cmd/raspiducky
-          
+
           # Linux ARMv7 (Raspberry Pi 2 / 3 32-bit / Banana Pi / Orange Pi)
           GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-armv7 ./cmd/raspiducky
-          
+
           # Linux ARM64 (Raspberry Pi 4 / 5 / Zero 2 W / CM4 / CM5 64-bit)
           GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-arm64 ./cmd/raspiducky
-          
+
           # Linux x86_64 / AMD64 (Standard Linux PC)
           GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-amd64 ./cmd/raspiducky
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        # zizmor: ignore[superfluous-actions] -- declarative release creation and asset upload on tag push
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: release_assets/*
         env:
