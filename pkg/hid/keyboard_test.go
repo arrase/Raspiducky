@@ -207,6 +207,20 @@ func TestKeyboard_TypingSpeedAndCancel(t *testing.T) {
 	}
 }
 
+func mustHold(t *testing.T, kbd *Keyboard, keys string) {
+	t.Helper()
+	if err := kbd.Hold(context.Background(), keys); err != nil {
+		t.Fatalf("Hold %q failed: %v", keys, err)
+	}
+}
+
+func mustRelease(t *testing.T, kbd *Keyboard, keys string) {
+	t.Helper()
+	if err := kbd.Release(context.Background(), keys); err != nil {
+		t.Fatalf("Release %q failed: %v", keys, err)
+	}
+}
+
 func TestKeyboard_HoldAndRelease(t *testing.T) {
 	kbd, err := NewKeyboard("", "US")
 	if err != nil {
@@ -218,35 +232,13 @@ func TestKeyboard_HoldAndRelease(t *testing.T) {
 	kbd.SetWriter(&buf)
 	kbd.SetTypingSpeed(0, 0)
 
-	ctx := context.Background()
-
-	// Hold SHIFT and DOWNARROW
-	if err := kbd.Hold(ctx, "SHIFT"); err != nil {
-		t.Fatalf("Hold SHIFT failed: %v", err)
-	}
-	if err := kbd.Hold(ctx, "DOWNARROW"); err != nil {
-		t.Fatalf("Hold DOWNARROW failed: %v", err)
-	}
-	if err := kbd.Hold(ctx, "a"); err != nil {
-		t.Fatalf("Hold a failed: %v", err)
-	}
-	// Duplicate hold should not duplicate keycode
-	if err := kbd.Hold(ctx, "DOWNARROW"); err != nil {
-		t.Fatalf("Hold duplicate DOWNARROW failed: %v", err)
-	}
-
-	// Release DOWNARROW while keeping SHIFT and a held
-	if err := kbd.Release(ctx, "DOWNARROW"); err != nil {
-		t.Fatalf("Release DOWNARROW failed: %v", err)
-	}
-	// Release a while keeping SHIFT held
-	if err := kbd.Release(ctx, "a"); err != nil {
-		t.Fatalf("Release a failed: %v", err)
-	}
-	// Release SHIFT
-	if err := kbd.Release(ctx, "SHIFT"); err != nil {
-		t.Fatalf("Release SHIFT failed: %v", err)
-	}
+	mustHold(t, kbd, "SHIFT")
+	mustHold(t, kbd, "DOWNARROW")
+	mustHold(t, kbd, "a")
+	mustHold(t, kbd, "DOWNARROW") // Duplicate hold should not duplicate keycode
+	mustRelease(t, kbd, "DOWNARROW")
+	mustRelease(t, kbd, "a")
+	mustRelease(t, kbd, "SHIFT")
 
 	data := buf.Bytes()
 	if len(data) != 7*8 {
@@ -264,23 +256,25 @@ func TestKeyboard_HoldAndRelease(t *testing.T) {
 	assertReport(t, data[32:40], ModLeftShift, KeyA)
 	assertReport(t, data[40:48], ModLeftShift, 0)
 	assertReport(t, data[48:56], 0, 0)
+}
 
-	// Hold multiple keys simultaneously (LEFTARROW, UPARROW, CTRL) and release one by one
-	buf.Reset()
-	if err := kbd.Hold(ctx, "CTRL LEFTARROW UPARROW"); err != nil {
-		t.Fatalf("Hold combo failed: %v", err)
+func TestKeyboard_HoldAndReleaseCombo(t *testing.T) {
+	kbd, err := NewKeyboard("", "US")
+	if err != nil {
+		t.Fatalf("NewKeyboard failed: %v", err)
 	}
-	if err := kbd.Release(ctx, "LEFTARROW"); err != nil {
-		t.Fatalf("Release LEFTARROW failed: %v", err)
-	}
-	if err := kbd.Release(ctx, "CTRL"); err != nil {
-		t.Fatalf("Release CTRL failed: %v", err)
-	}
-	if err := kbd.Release(ctx, "UPARROW"); err != nil {
-		t.Fatalf("Release UPARROW failed: %v", err)
-	}
+	defer func() { _ = kbd.Close() }()
 
-	data = buf.Bytes()
+	var buf bytes.Buffer
+	kbd.SetWriter(&buf)
+	kbd.SetTypingSpeed(0, 0)
+
+	mustHold(t, kbd, "CTRL LEFTARROW UPARROW")
+	mustRelease(t, kbd, "LEFTARROW")
+	mustRelease(t, kbd, "CTRL")
+	mustRelease(t, kbd, "UPARROW")
+
+	data := buf.Bytes()
 	if len(data) != 4*8 {
 		t.Fatalf("Expected 32 bytes (4 reports), got %d", len(data))
 	}
@@ -291,7 +285,7 @@ func TestKeyboard_HoldAndRelease(t *testing.T) {
 	assertReport(t, data[16:24], 0, KeyUp)
 	assertReport(t, data[24:32], 0, 0)
 
-	// Error handling for unknown key tokens
+	ctx := context.Background()
 	if err := kbd.Hold(ctx, "NONEXISTENT_KEY"); err == nil {
 		t.Errorf("Expected error for unknown key token in Hold")
 	}
