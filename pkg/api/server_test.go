@@ -57,11 +57,14 @@ func TestServer_LEDStateBroadcast(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws"
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatalf("Failed to connect to WebSocket: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// First initial message upon connection should be led_state
 	var msg WSMessage
@@ -482,5 +485,53 @@ func TestGadgetManager_UpdateConfig_ValidationAndHIDDevicePaths(t *testing.T) {
 	gotDisk, err := os.ReadFile(diskPath)
 	if err != nil || string(gotDisk) != string(sentinel) {
 		t.Errorf("Expected existing disk.img content to be preserved, got %q (err=%v)", string(gotDisk), err)
+	}
+}
+
+func TestServer_HTTPHandlersAndFailedJob(t *testing.T) {
+	server := setupTestServer(t, nil)
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+
+	for _, path := range []string{"/api/gadget", "/api/scripts", "/api/job"} {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s failed: %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected 200 OK for GET %s, got %d", path, resp.StatusCode)
+		}
+	}
+
+	stopResp, err := http.Post(ts.URL+"/api/stop", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("POST /api/stop failed: %v", err)
+	}
+	_ = stopResp.Body.Close()
+	if stopResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 Bad Request when stopping with no active job, got %d", stopResp.StatusCode)
+	}
+
+	if _, err := server.runnerEngine.Run(RunRequest{
+		Name:   "fail.js",
+		Type:   "javascript",
+		Script: `throw new Error("boom");`,
+	}); err != nil {
+		t.Fatalf("Run fail.js failed to start: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		job := server.runnerEngine.GetActiveJob()
+		if job != nil && job.Status == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	job := server.runnerEngine.GetActiveJob()
+	if job == nil || job.Status != "failed" {
+		t.Fatalf("Expected job status 'failed', got %+v", job)
 	}
 }

@@ -164,13 +164,14 @@ func (re *RunnerEngine) executeJob(ctx context.Context, doneCh chan struct{}, jo
 	now := time.Now()
 	job.FinishedAt = &now
 
-	if ctx.Err() == context.Canceled {
+	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
 		job.Status = "stopped"
-	} else if execErr != nil {
+	case execErr != nil:
 		job.Status = "failed"
 		job.Error = execErr.Error()
 		re.broadcastLog("ERROR", "ENGINE", fmt.Sprintf("Job [%s] failed: %v", job.ID, execErr))
-	} else {
+	default:
 		job.Status = "completed"
 		re.broadcastLog("INFO", "ENGINE", fmt.Sprintf("Job [%s] completed successfully.", job.ID))
 	}

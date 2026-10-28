@@ -2,6 +2,7 @@ package gadget
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,6 +174,46 @@ func TestDeploy_NonDWC2ControllerWithoutHwParams(t *testing.T) {
 	if err := gm.Deploy(ctx, cfg); err != nil {
 		t.Fatalf("expected Deploy to succeed on non-dwc2 UDC without hw_params, got: %v", err)
 	}
+
+	// Test sysfs ep* directory fallback (without ep0 and with ep0)
+	udcSysDir := filepath.Join(gm.UDCDir, "dummy.udc")
+	_ = os.Remove(udcSysDir)
+	if err := os.MkdirAll(filepath.Join(udcSysDir, "ep1in"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if maxEP, err := gm.GetMaxEndpoints(); err != nil || maxEP != 2 {
+		t.Fatalf("expected maxEP=2 (ep1in + implicit ep0), got maxEP=%d err=%v", maxEP, err)
+	}
+	if err := os.MkdirAll(filepath.Join(udcSysDir, "ep0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if maxEP, err := gm.GetMaxEndpoints(); err != nil || maxEP != 2 {
+		t.Fatalf("expected maxEP=2 (ep0 + ep1in), got maxEP=%d err=%v", maxEP, err)
+	}
+
+	// Test parseHwParamsEndpoints edge cases (other lines, missing num_dev_ep, invalid int)
+	hwParamsFile := filepath.Join(gm.DebugFSDir, "dummy.udc", "hw_params")
+	if err := os.MkdirAll(filepath.Dir(hwParamsFile), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hwParamsFile, []byte("arch: 2\nnum_dev_ep: 12\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if maxEP, err := gm.GetMaxEndpoints(); err != nil || maxEP != 12 {
+		t.Fatalf("expected maxEP=12, got maxEP=%d err=%v", maxEP, err)
+	}
+	if err := os.WriteFile(hwParamsFile, []byte("arch: 2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gm.GetMaxEndpoints(); err == nil {
+		t.Fatal("expected error when num_dev_ep is missing from hw_params")
+	}
+	if err := os.WriteFile(hwParamsFile, []byte("num_dev_ep: invalid\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gm.GetMaxEndpoints(); err == nil {
+		t.Fatal("expected error when num_dev_ep is non-integer")
+	}
 }
 
 func TestConfig_CountEndpoints(t *testing.T) {
@@ -198,7 +239,7 @@ func TestConfig_Validate(t *testing.T) {
 	noFuncs := validTestConfig()
 	noFuncs.Keyboard = false
 	noFuncs.Mouse = false
-	if err := noFuncs.Validate(); err != ErrNoFunctionsEnabled {
+	if err := noFuncs.Validate(); !errors.Is(err, ErrNoFunctionsEnabled) {
 		t.Errorf("expected ErrNoFunctionsEnabled, got: %v", err)
 	}
 

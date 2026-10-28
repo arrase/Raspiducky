@@ -22,6 +22,7 @@ const (
 	scriptsMetaFile  = "scripts_meta.json"
 )
 
+// Script validation and lookup errors.
 var (
 	ErrInvalidScriptName = errors.New("invalid script name")
 	ErrScriptNotFound    = errors.New("script not found")

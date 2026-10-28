@@ -1,3 +1,4 @@
+// Package hid implements USB HID keyboard, mouse, and LED watcher devices.
 package hid
 
 import (
