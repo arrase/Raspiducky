@@ -28,20 +28,23 @@ jobs:
           cache: false
 
       - name: Build Binaries
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           mkdir -p release_assets
+          LDFLAGS="-s -w -X main.version=${VERSION}"
 
           # Linux ARMv6 (Raspberry Pi Zero W / Zero / Model A)
-          GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-armv6 ./cmd/raspiducky
+          GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="${LDFLAGS}" -o release_assets/raspiducky-linux-armv6 ./cmd/raspiducky
 
           # Linux ARMv7 (Raspberry Pi 2 / 3 32-bit / Banana Pi / Orange Pi)
-          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-armv7 ./cmd/raspiducky
+          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="${LDFLAGS}" -o release_assets/raspiducky-linux-armv7 ./cmd/raspiducky
 
           # Linux ARM64 (Raspberry Pi 4 / 5 / Zero 2 W / CM4 / CM5 64-bit)
-          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-arm64 ./cmd/raspiducky
+          GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o release_assets/raspiducky-linux-arm64 ./cmd/raspiducky
 
           # Linux x86_64 / AMD64 (Standard Linux PC)
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release_assets/raspiducky-linux-amd64 ./cmd/raspiducky
+          GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o release_assets/raspiducky-linux-amd64 ./cmd/raspiducky
 
       - name: Upload Release Assets
         # zizmor: ignore[superfluous-actions] -- declarative release creation and asset upload on tag push

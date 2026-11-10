@@ -1,20 +1,27 @@
 # 🛠️ Command Line Interface & Headless Automation
 
-While Raspiducky includes an embedded web dashboard, its core architecture is built around a single Go binary that functions seamlessly in command line environments, headless boot setups, and automated background system services.
+While Raspiducky includes an embedded web dashboard, its single Go binary works seamlessly from the terminal, automated scripts, `crontab` boot hooks, and `systemd` services.
 
 ---
 
 ## 💻 CLI Commands & Flags Reference
 
-The `raspiducky` CLI binary supports two primary operating subcommands: `daemon` (starts the server engine and web interface) and `run` (executes payload scripts directly).
-
 ```bash
-raspiducky [subcommand] [flags]
+raspiducky <subcommand> [flags]
 ```
+
+| Subcommand | Aliases | Description |
+| :--- | :--- | :--- |
+| `daemon` | `server` | Starts the background server, REST/WebSocket API, and embedded Web Dashboard. |
+| `run <file>` | `exec <file>` | Executes a DuckyScript (`.txt`, `.ducky`) or JavaScript (`.js`) payload file. |
+| `version` | `-v`, `--version` | Prints the compiled Raspiducky version string. |
+| `help` | `-h`, `--help` | Prints CLI usage and flag help. |
+
+---
 
 ### 1. `daemon` Subcommand
 
-Starts the background server, REST/WebSocket API endpoints, and web dashboard UI.
+Starts the background HTTP/WebSocket server, restores or initializes USB ConfigFS gadget state, and serves the Web Dashboard.
 
 ```bash
 sudo raspiducky daemon [flags]
@@ -22,24 +29,28 @@ sudo raspiducky daemon [flags]
 
 #### Supported Flags
 
-| Flag | Default Value | Description |
+| Flag | Default | Description |
 | :--- | :--- | :--- |
-| `-port` | `:8000` | Network binding interface and HTTP/WebSocket port. |
-| `-storage` | `/var/lib/raspiducky` | Path to persistent storage directory for disk images, saved scripts, and gadget configurations. |
-| `-layout` | `US` | Default HID keyboard translation layout (`US`, `ES`, `DE`, `FR`). |
+| `-port` | `:8000` | Listen address and port (e.g., `:8000` or `127.0.0.1:8080`). |
+| `-storage` | `/var/lib/raspiducky` | Persistent storage directory for `gadget_config.json`, `storage.img`, and saved `scripts/`. |
+| `-layout` | *(empty — uses saved/`US`)* | Optional override for keyboard layout (`US`, `ES`, `DE`, `FR`). Leaving it unset preserves layout changes saved in the Web Dashboard across restarts. |
+| `-delay` | `-1` *(uses saved/`10ms`)* | Optional override for inter-keystroke delay in ms (use `-delay 0` for raw burst speed, or `-delay 10` for universal PC/console pacing). |
 
 #### Example Usage
 
 ```bash
-# Start daemon on port 8080 using Spanish keyboard layout
-sudo raspiducky daemon -port :8080 -layout ES -storage /etc/raspiducky
+# Start daemon using persisted layout/delay from /var/lib/raspiducky
+sudo raspiducky daemon -port :8000 -storage /var/lib/raspiducky
+
+# Force Spanish layout and 0ms burst typing delay at startup
+sudo raspiducky daemon -port :8080 -layout ES -delay 0
 ```
 
 ---
 
-### 2. `run` Subcommand
+### 2. `run` Subcommand (with Smart Daemon Delegation)
 
-Executes a single payload script directly from the terminal without initiating the HTTP server or web UI. This subcommand accepts both DuckyScript (`.txt`, `.ducky`) and JavaScript (`.js`) files.
+Executes a DuckyScript (`.txt`, `.ducky`) or JavaScript (`.js`) payload from the command line. Flags may be placed either before or after `<script_path>`.
 
 ```bash
 sudo raspiducky run <script_path> [flags]
@@ -47,61 +58,54 @@ sudo raspiducky run <script_path> [flags]
 
 #### Supported Flags
 
-| Flag | Default Value | Description |
+| Flag | Default | Description |
 | :--- | :--- | :--- |
-| `-layout` | `US` | HID keyboard translation layout for character encoding (`US`, `ES`, `DE`, `FR`). |
+| `-layout` | *(empty — uses daemon/`US`)* | Override keyboard translation layout for this run (`US`, `ES`, `DE`, `FR`). |
+| `-delay` | `-1` *(uses daemon/`10ms`)* | Override inter-keystroke delay in ms for this run (`0` explicitly selects `0ms`). |
+| `-server` | `http://127.0.0.1:8000` | Base URL of a running local `raspiducky daemon` instance. Pass `-server ""` to force standalone direct `/dev/hidg*` access. |
+
+!!! info "Automatic Daemon Delegation"
+    When `raspiducky.service` is active on `http://127.0.0.1:8000`, `raspiducky run` automatically submits the script via `POST /api/run`, polls `GET /api/job` until completion, and forwards `Ctrl+C` (`SIGINT`/`SIGTERM`) to `POST /api/stop`. This prevents two processes from competing over `/dev/hidg0` and streams live execution logs to open Web Dashboard tabs. If no daemon is reachable, `raspiducky run` transparently falls back to direct local HID execution.
 
 #### Example Usage
 
 ```bash
-# Execute a DuckyScript payload with Spanish layout
-sudo raspiducky run /var/lib/raspiducky/payload.txt -layout ES
+# Run DuckyScript payload with Spanish layout (delegates to daemon if running)
+sudo raspiducky run /var/lib/raspiducky/scripts/payload.txt -layout ES
 
-# Execute a JavaScript payload
-sudo raspiducky run /var/lib/raspiducky/jiggler.js
+# Run JavaScript payload at maximum raw speed (0ms delay)
+sudo raspiducky run /var/lib/raspiducky/scripts/fast.js -delay 0
 ```
 
 ---
 
 ## 🤖 Headless Boot Execution via `crontab`
 
-For standalone, headless operations where Raspiducky must automatically run a specific payload as soon as the SBC boots up, you can schedule execution using the root user's `crontab`.
-
-### Configuration Steps
-
-1. Open the root user's crontab editor:
+To run a payload automatically after boot, add an `@reboot` entry to `root`'s `crontab`:
 
 ```bash
 sudo crontab -e
 ```
 
-2. Add an `@reboot` entry pointing to the target script:
-
 ```cron
-@reboot /usr/local/bin/raspiducky run /var/lib/raspiducky/boot_payload.txt -layout ES >> /var/log/raspiducky-boot.log 2>&1
+@reboot sleep 5 && /usr/local/bin/raspiducky run /var/lib/raspiducky/boot_payload.txt -layout ES >> /var/log/raspiducky-boot.log 2>&1
 ```
-
-3. Save and exit. On subsequent boots, the script will execute automatically without human intervention.
 
 ---
 
 ## ⚙️ Systemd Background Service Setup
 
-To run Raspiducky as a persistent system daemon that starts on boot and automatically restarts if interrupted, use a systemd service unit.
-
-### Service Unit File (`/etc/systemd/system/raspiducky.service`)
-
-Create the systemd service file with the following contents:
+The automated `install.sh` script creates `/etc/systemd/system/raspiducky.service` ordered after both ConfigFS and DebugFS mounts, and omits `-layout` so keyboard layouts and typing speeds chosen in the Web Dashboard persist cleanly across reboots:
 
 ```ini
 [Unit]
 Description=Raspiducky USB Gadget & DuckyScript Appliance Daemon
-After=network.target
+After=network.target sys-kernel-config.mount sys-kernel-debug.mount
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/raspiducky daemon -port :8000 -storage /var/lib/raspiducky -layout US
+ExecStart=/usr/local/bin/raspiducky daemon -port :8000 -storage /var/lib/raspiducky
 Restart=always
 RestartSec=5
 
@@ -109,23 +113,11 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-### Enabling & Managing the Service
-
-Load the service unit, enable auto-start on boot, and manage execution using standard `systemctl` commands:
+### Managing the Service
 
 ```bash
-# Reload systemd manager configuration
 sudo systemctl daemon-reload
-
-# Enable service to run on boot
-sudo systemctl enable raspiducky.service
-
-# Start the service immediately
-sudo systemctl start raspiducky.service
-
-# Check live service status
+sudo systemctl enable --now raspiducky.service
 sudo systemctl status raspiducky.service
-
-# View real-time application logs
 sudo journalctl -u raspiducky.service -f
 ```

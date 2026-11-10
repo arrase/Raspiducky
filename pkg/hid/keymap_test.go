@@ -22,22 +22,37 @@ func TestGetLayout(t *testing.T) {
 
 func assertRuneMapping(t *testing.T, layoutName string, l *Layout, ch rune, wantMod, wantKey uint8) {
 	t.Helper()
-	report, ok := l.Runes[ch]
+	ks, ok := l.Runes[ch]
 	if !ok {
 		t.Fatalf("%s missing rune %q", layoutName, ch)
 	}
-	if report[0] != wantMod || report[2] != wantKey {
+	if ks.First.Modifiers != wantMod || ks.First.KeyCode != wantKey {
 		t.Errorf("%s %q mismatch: got mod=%#x key=%#x, want mod=%#x key=%#x",
-			layoutName, ch, report[0], report[2], wantMod, wantKey)
+			layoutName, ch, ks.First.Modifiers, ks.First.KeyCode, wantMod, wantKey)
+	}
+}
+
+func assertDeadKeyMapping(t *testing.T, layoutName string, l *Layout, ch rune, first, second KeyCombo) {
+	t.Helper()
+	ks, ok := l.Runes[ch]
+	if !ok {
+		t.Fatalf("%s missing dead-key rune %q", layoutName, ch)
+	}
+	if ks.First != first || ks.Second != second {
+		t.Errorf("%s %q dead-key mismatch: got %+v, want %+v -> %+v",
+			layoutName, ch, ks, first, second)
 	}
 }
 
 func TestLayoutMappings(t *testing.T) {
+	space := KeyCombo{KeyCode: KeySpace}
+
 	de, _ := GetLayout("DE")
 	assertRuneMapping(t, "DE", de, '?', ModLeftShift, KeyMinus)
 	assertRuneMapping(t, "DE", de, '&', ModLeftShift, Key6)
-	assertRuneMapping(t, "DE", de, '^', 0, KeyGrave)
-	assertRuneMapping(t, "DE", de, '`', ModLeftShift, KeyEqual)
+	assertDeadKeyMapping(t, "DE", de, '^', KeyCombo{KeyCode: KeyGrave}, space)
+	assertDeadKeyMapping(t, "DE", de, '`', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyEqual}, space)
+	assertDeadKeyMapping(t, "DE", de, 'é', KeyCombo{KeyCode: KeyEqual}, KeyCombo{KeyCode: KeyE})
 
 	es, _ := GetLayout("ES")
 	esCases := []struct {
@@ -51,8 +66,6 @@ func TestLayoutMappings(t *testing.T) {
 		{'¿', ModLeftShift, KeyEqual},
 		{'º', 0, KeyGrave},
 		{'ª', ModLeftShift, KeyGrave},
-		{'`', 0, KeyLeftBrace},
-		{'^', ModLeftShift, KeyLeftBrace},
 		{'[', ModRightAlt, KeyLeftBrace},
 		{'+', 0, KeyRightBrace},
 		{'*', ModLeftShift, KeyRightBrace},
@@ -66,6 +79,13 @@ func TestLayoutMappings(t *testing.T) {
 	for _, tc := range esCases {
 		assertRuneMapping(t, "ES", es, tc.ch, tc.mod, tc.key)
 	}
+	assertDeadKeyMapping(t, "ES", es, '`', KeyCombo{KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "ES", es, '^', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "ES", es, '´', KeyCombo{KeyCode: KeyApostrophe}, space)
+	assertDeadKeyMapping(t, "ES", es, '¨', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyApostrophe}, space)
+	assertDeadKeyMapping(t, "ES", es, 'á', KeyCombo{KeyCode: KeyApostrophe}, KeyCombo{KeyCode: KeyA})
+	assertDeadKeyMapping(t, "ES", es, 'Ó', KeyCombo{KeyCode: KeyApostrophe}, KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyO})
+	assertDeadKeyMapping(t, "ES", es, 'ü', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyApostrophe}, KeyCombo{KeyCode: KeyU})
 
 	fr, _ := GetLayout("FR")
 	frCases := []struct {
@@ -77,55 +97,52 @@ func TestLayoutMappings(t *testing.T) {
 		{'}', ModRightAlt, KeyEqual},
 		{'=', 0, KeyEqual},
 		{'+', ModLeftShift, KeyEqual},
-		{'^', 0, KeyLeftBrace},
-		{'¨', ModLeftShift, KeyLeftBrace},
 	}
 	for _, tc := range frCases {
 		assertRuneMapping(t, "FR", fr, tc.ch, tc.mod, tc.key)
 	}
+	assertDeadKeyMapping(t, "FR", fr, '^', KeyCombo{KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "FR", fr, '¨', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "FR", fr, '~', KeyCombo{Modifiers: ModRightAlt, KeyCode: Key2}, space)
+	assertDeadKeyMapping(t, "FR", fr, '`', KeyCombo{Modifiers: ModRightAlt, KeyCode: Key7}, space)
+	assertDeadKeyMapping(t, "FR", fr, 'ê', KeyCombo{KeyCode: KeyLeftBrace}, KeyCombo{KeyCode: KeyE})
 }
 
 func TestMapKeyName(t *testing.T) {
+	cases := []struct {
+		layout string
+		token  string
+		want   KeyCombo
+	}{
+		{"ES", "CTRL", KeyCombo{Modifiers: ModLeftCtrl}},
+		{"ES", "WIN", KeyCombo{Modifiers: ModLeftGUI}},
+		{"ES", "BKSP", KeyCombo{KeyCode: KeyBackspace}},
+		{"ES", "A", KeyCombo{KeyCode: KeyA}},
+		{"ES", "ñ", KeyCombo{KeyCode: KeySemicolon}},
+		{"ES", "Ñ", KeyCombo{KeyCode: KeySemicolon}},
+		{"DE", "ß", KeyCombo{KeyCode: KeyMinus}},
+		{"FR", "1", KeyCombo{KeyCode: Key1}},
+		{"ES", "/", KeyCombo{KeyCode: Key7}},
+	}
+
+	for _, tc := range cases {
+		l, _ := GetLayout(tc.layout)
+		combo, ok := l.MapKeyName(tc.token)
+		if !ok || combo != tc.want {
+			t.Errorf("%s MapKeyName(%q) = (%+v, %v), want (%+v, true)", tc.layout, tc.token, combo, ok, tc.want)
+		}
+	}
+
 	es, _ := GetLayout("ES")
-
-	if combo, ok := es.MapKeyName("CTRL"); !ok || combo.Modifiers != ModLeftCtrl || combo.KeyCode != 0 {
-		t.Errorf("MapKeyName(CTRL) failed: %+v, ok=%v", combo, ok)
-	}
-
-	if combo, ok := es.MapKeyName("A"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeyA {
-		t.Errorf("MapKeyName(A) failed: %+v, ok=%v", combo, ok)
-	}
-
-	// Non-ASCII single rune in ES
-	if combo, ok := es.MapKeyName("ñ"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeySemicolon {
-		t.Errorf("MapKeyName(ñ) failed: %+v, ok=%v", combo, ok)
-	}
-	if combo, ok := es.MapKeyName("Ñ"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeySemicolon {
-		t.Errorf("MapKeyName(Ñ) failed: %+v, ok=%v", combo, ok)
-	}
-
-	de, _ := GetLayout("DE")
-	if combo, ok := de.MapKeyName("ß"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeyMinus {
-		t.Errorf("MapKeyName(ß) failed: %+v, ok=%v", combo, ok)
-	}
-
-	// Verify FR digits and shifted symbols do not inject ModLeftShift/ModRightAlt in MapKeyName
-	fr, _ := GetLayout("FR")
-	if combo, ok := fr.MapKeyName("1"); !ok || combo.Modifiers != 0 || combo.KeyCode != Key1 {
-		t.Errorf("FR MapKeyName(1) should not inject Shift: %+v, ok=%v", combo, ok)
-	}
-	if combo, ok := es.MapKeyName("/"); !ok || combo.Modifiers != 0 || combo.KeyCode != Key7 {
-		t.Errorf("ES MapKeyName(/) should not inject Shift: %+v, ok=%v", combo, ok)
-	}
-
 	if _, ok := es.MapKeyName("NONEXISTENT_KEY"); ok {
 		t.Error("Expected false for unknown key name")
 	}
 }
 
-func TestSmartQuoteMappings(t *testing.T) {
+func TestSmartQuoteAndUnicodeAliases(t *testing.T) {
 	singleQuotes := []rune{'\u2018', '\u2019', '\u201a', '\u201b'}
 	doubleQuotes := []rune{'\u201c', '\u201d', '\u201e', '\u201f', '\u00ab', '\u00bb'}
+	dashes := []rune{'\u2013', '\u2014', '\u2212'}
 
 	for _, name := range []string{"US", "DE", "ES", "FR"} {
 		l, err := GetLayout(name)
@@ -135,12 +152,19 @@ func TestSmartQuoteMappings(t *testing.T) {
 
 		wantSingle := l.Runes['\'']
 		for _, q := range singleQuotes {
-			assertRuneMapping(t, name, l, q, wantSingle[0], wantSingle[2])
+			assertRuneMapping(t, name, l, q, wantSingle.First.Modifiers, wantSingle.First.KeyCode)
 		}
 
 		wantDouble := l.Runes['"']
 		for _, q := range doubleQuotes {
-			assertRuneMapping(t, name, l, q, wantDouble[0], wantDouble[2])
+			assertRuneMapping(t, name, l, q, wantDouble.First.Modifiers, wantDouble.First.KeyCode)
 		}
+
+		wantDash := l.Runes['-']
+		for _, d := range dashes {
+			assertRuneMapping(t, name, l, d, wantDash.First.Modifiers, wantDash.First.KeyCode)
+		}
+
+		assertRuneMapping(t, name, l, '\u00a0', 0, KeySpace)
 	}
 }

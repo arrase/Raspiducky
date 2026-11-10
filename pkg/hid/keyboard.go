@@ -2,16 +2,30 @@ package hid
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
+const (
+	fastHoldDuration  = 2 * time.Millisecond
+	minHoldDuration   = 5 * time.Millisecond
+	maxHoldDuration   = 20 * time.Millisecond
+	enterHoldDuration = 20 * time.Millisecond
+	fastGapDuration   = 2 * time.Millisecond
+	minEnterDelayMs   = 25
+	releaseCleanupTTL = 100 * time.Millisecond
+	maxHeldKeys       = 6
+)
+
 // Keyboard provides thread-safe access to a USB HID keyboard device (/dev/hidg0).
 type Keyboard struct {
 	hidWriter
+	opMu             sync.Mutex
 	mu               sync.Mutex
 	layout           *Layout
 	keyDelayMs       int
@@ -74,73 +88,121 @@ func (kbd *Keyboard) GetTypingSpeed() (int, int) {
 	return kbd.keyDelayMs, kbd.keyDelayJitterMs
 }
 
-const (
-	minKeyHoldDuration = 35 * time.Millisecond
-	maxKeyHoldDuration = 100 * time.Millisecond
-	minKeyDelayMs      = 35
-)
-
 func sleepContext(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		return ctx.Err()
 	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(d):
+	case <-timer.C:
 		return nil
 	}
 }
 
 func (kbd *Keyboard) holdDuration() time.Duration {
 	kbd.mu.Lock()
-	delay := time.Duration(kbd.keyDelayMs) * time.Millisecond
+	delayMs := kbd.keyDelayMs
 	kbd.mu.Unlock()
 
-	if delay < minKeyHoldDuration {
-		return minKeyHoldDuration
+	if delayMs <= 0 {
+		return fastHoldDuration
 	}
-	if delay > maxKeyHoldDuration {
-		return maxKeyHoldDuration
+	d := time.Duration(delayMs) * time.Millisecond
+	if d < minHoldDuration {
+		return minHoldDuration
 	}
-	return delay
+	if d > maxHoldDuration {
+		return maxHoldDuration
+	}
+	return d
+}
+
+func (kbd *Keyboard) holdDurationForKey(key uint8) time.Duration {
+	hold := kbd.holdDuration()
+	if key == KeyEnter && hold > fastHoldDuration && hold < enterHoldDuration {
+		return enterHoldDuration
+	}
+	return hold
 }
 
 func (kbd *Keyboard) waitKeyDelay(ctx context.Context) error {
+	return kbd.waitKeyDelayForKey(ctx, 0)
+}
+
+func (kbd *Keyboard) waitKeyDelayForKey(ctx context.Context, key uint8) error {
 	kbd.mu.Lock()
 	delay := kbd.keyDelayMs
 	jitter := kbd.keyDelayJitterMs
 	kbd.mu.Unlock()
 
-	totalDelay := delay
-	if totalDelay < minKeyDelayMs {
-		totalDelay = minKeyDelayMs
+	if delay <= 0 && jitter <= 0 {
+		return sleepContext(ctx, fastGapDuration)
+	}
+	if key == KeyEnter && delay > 0 && delay < minEnterDelayMs {
+		delay = minEnterDelayMs
 	}
 	if jitter > 0 {
-		totalDelay += rand.Intn(jitter)
+		delay += rand.IntN(jitter)
 	}
-	return sleepContext(ctx, time.Duration(totalDelay)*time.Millisecond)
+	return sleepContext(ctx, time.Duration(delay)*time.Millisecond)
 }
 
 // WriteReport writes an 8-byte KeyboardReport to the device in a thread-safe manner.
 func (kbd *Keyboard) WriteReport(report KeyboardReport) error {
-	return kbd.writeReport(report[:])
+	return kbd.writeReport(context.Background(), report[:])
+}
+
+func (kbd *Keyboard) writeReportContext(ctx context.Context, report KeyboardReport) error {
+	return kbd.writeReport(ctx, report[:])
+}
+
+func (kbd *Keyboard) restoreHeldStateBestEffort() {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), releaseCleanupTTL)
+	defer cancel()
+	report := kbd.activeReport(0)
+	_ = kbd.writeReportContext(cleanupCtx, report)
 }
 
 // ReleaseKeys clears all held keys and sends an empty report to release all currently pressed keys.
 func (kbd *Keyboard) ReleaseKeys() error {
+	kbd.opMu.Lock()
+	defer kbd.opMu.Unlock()
+
 	kbd.mu.Lock()
 	kbd.heldModifiers = 0
 	kbd.heldKeys = nil
 	kbd.mu.Unlock()
-	return kbd.WriteReport(KeyboardReport{})
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), releaseCleanupTTL)
+	defer cancel()
+	return kbd.writeReportContext(cleanupCtx, KeyboardReport{})
+}
+
+// ReleaseHeldKeys clears and releases keys only if any modifier or key is currently held.
+func (kbd *Keyboard) ReleaseHeldKeys() error {
+	kbd.opMu.Lock()
+	defer kbd.opMu.Unlock()
+
+	kbd.mu.Lock()
+	wasHeld := kbd.heldModifiers != 0 || len(kbd.heldKeys) > 0
+	kbd.heldModifiers = 0
+	kbd.heldKeys = nil
+	kbd.mu.Unlock()
+
+	if !wasHeld {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), releaseCleanupTTL)
+	defer cancel()
+	return kbd.writeReportContext(cleanupCtx, KeyboardReport{})
 }
 
 func appendUniqueKey(keys []uint8, key uint8) []uint8 {
-	for _, k := range keys {
-		if k == key {
-			return keys
-		}
+	if slices.Contains(keys, key) {
+		return keys
 	}
 	return append(keys, key)
 }
@@ -169,8 +231,66 @@ func (kbd *Keyboard) activeReport(modifiers uint8, keycodes ...uint8) KeyboardRe
 	return NewKeyboardReport(mods, keys...)
 }
 
+func (kbd *Keyboard) heldKeyPresent(key uint8) (KeyboardReport, bool) {
+	if key == 0 {
+		return KeyboardReport{}, false
+	}
+	kbd.mu.Lock()
+	defer kbd.mu.Unlock()
+	if !slices.Contains(kbd.heldKeys, key) {
+		return KeyboardReport{}, false
+	}
+	return NewKeyboardReport(kbd.heldModifiers, removeKey(kbd.heldKeys, key)...), true
+}
+
+func splitComboWord(word string) []string {
+	if len(word) == 1 {
+		return []string{word}
+	}
+	var parts []string
+	start := 0
+	for i := 0; i < len(word); i++ {
+		if word[i] != '-' && word[i] != '+' {
+			continue
+		}
+		if i > start {
+			parts = append(parts, word[start:i])
+		} else if i == len(word)-1 {
+			parts = append(parts, word[i:])
+		}
+		start = i + 1
+	}
+	if start < len(word) {
+		parts = append(parts, word[start:])
+	}
+	return parts
+}
+
+// SplitComboTokens splits a key combo string by whitespace, '-' or '+', preserving standalone '-' and '+' tokens.
+func SplitComboTokens(comboStr string) []string {
+	var tokens []string
+	for _, word := range strings.Fields(comboStr) {
+		tokens = append(tokens, splitComboWord(word)...)
+	}
+	return tokens
+}
+
+// ValidateCombo checks whether comboStr contains only valid key names for the given layout.
+func ValidateCombo(layout *Layout, comboStr string) error {
+	tokens := SplitComboTokens(comboStr)
+	if len(tokens) == 0 {
+		return errors.New("empty key combination")
+	}
+	for _, token := range tokens {
+		if _, ok := layout.MapKeyName(token); !ok {
+			return fmt.Errorf("unknown key token %q", token)
+		}
+	}
+	return nil
+}
+
 func (kbd *Keyboard) parseCombo(comboStr, action string) (uint8, []uint8, bool, error) {
-	tokens := strings.Fields(comboStr)
+	tokens := SplitComboTokens(comboStr)
 	if len(tokens) == 0 {
 		return 0, nil, false, nil
 	}
@@ -189,7 +309,7 @@ func (kbd *Keyboard) parseCombo(comboStr, action string) (uint8, []uint8, bool, 
 		}
 		modifiers |= combo.Modifiers
 		if combo.KeyCode != 0 {
-			keycodes = append(keycodes, combo.KeyCode)
+			keycodes = appendUniqueKey(keycodes, combo.KeyCode)
 		}
 	}
 
@@ -202,22 +322,35 @@ func (kbd *Keyboard) Hold(ctx context.Context, comboStr string) error {
 		return err
 	}
 
+	kbd.opMu.Lock()
+	defer kbd.opMu.Unlock()
+
 	modifiers, keycodes, ok, err := kbd.parseCombo(comboStr, "hold")
 	if err != nil || !ok {
 		return err
 	}
 
 	kbd.mu.Lock()
-	kbd.heldModifiers |= modifiers
+	nextMods := kbd.heldModifiers | modifiers
+	nextKeys := append([]uint8(nil), kbd.heldKeys...)
 	for _, kc := range keycodes {
-		kbd.heldKeys = appendUniqueKey(kbd.heldKeys, kc)
+		nextKeys = appendUniqueKey(nextKeys, kc)
 	}
-	report := NewKeyboardReport(kbd.heldModifiers, kbd.heldKeys...)
 	kbd.mu.Unlock()
 
-	if err := kbd.WriteReport(report); err != nil {
+	if len(nextKeys) > maxHeldKeys {
+		return fmt.Errorf("cannot hold more than %d keys simultaneously", maxHeldKeys)
+	}
+
+	if err := kbd.writeReportContext(ctx, NewKeyboardReport(nextMods, nextKeys...)); err != nil {
 		return err
 	}
+
+	kbd.mu.Lock()
+	kbd.heldModifiers = nextMods
+	kbd.heldKeys = nextKeys
+	kbd.mu.Unlock()
+
 	return kbd.waitKeyDelay(ctx)
 }
 
@@ -227,23 +360,56 @@ func (kbd *Keyboard) Release(ctx context.Context, comboStr string) error {
 		return err
 	}
 
+	kbd.opMu.Lock()
+	defer kbd.opMu.Unlock()
+
 	modifiers, keycodes, ok, err := kbd.parseCombo(comboStr, "release")
 	if err != nil || !ok {
 		return err
 	}
 
 	kbd.mu.Lock()
-	kbd.heldModifiers &^= modifiers
+	nextMods := kbd.heldModifiers &^ modifiers
+	nextKeys := append([]uint8(nil), kbd.heldKeys...)
 	for _, kc := range keycodes {
-		kbd.heldKeys = removeKey(kbd.heldKeys, kc)
+		nextKeys = removeKey(nextKeys, kc)
 	}
-	report := NewKeyboardReport(kbd.heldModifiers, kbd.heldKeys...)
 	kbd.mu.Unlock()
 
-	if err := kbd.WriteReport(report); err != nil {
+	if err := kbd.writeReportContext(ctx, NewKeyboardReport(nextMods, nextKeys...)); err != nil {
 		return err
 	}
+
+	kbd.mu.Lock()
+	kbd.heldModifiers = nextMods
+	kbd.heldKeys = nextKeys
+	kbd.mu.Unlock()
+
 	return kbd.waitKeyDelay(ctx)
+}
+
+func (kbd *Keyboard) tapCombo(ctx context.Context, combo KeyCombo) error {
+	if preRelease, held := kbd.heldKeyPresent(combo.KeyCode); held {
+		if err := kbd.writeReportContext(ctx, preRelease); err != nil {
+			return err
+		}
+		if err := sleepContext(ctx, kbd.holdDuration()); err != nil {
+			kbd.restoreHeldStateBestEffort()
+			return err
+		}
+	}
+
+	if err := kbd.writeReportContext(ctx, kbd.activeReport(combo.Modifiers, combo.KeyCode)); err != nil {
+		return err
+	}
+	if err := sleepContext(ctx, kbd.holdDurationForKey(combo.KeyCode)); err != nil {
+		kbd.restoreHeldStateBestEffort()
+		return err
+	}
+	if err := kbd.writeReportContext(ctx, kbd.activeReport(0)); err != nil {
+		return err
+	}
+	return kbd.waitKeyDelayForKey(ctx, combo.KeyCode)
 }
 
 // Press parses and executes a key combination string like "CTRL ALT DELETE" or "GUI R".
@@ -252,65 +418,97 @@ func (kbd *Keyboard) Press(ctx context.Context, comboStr string) error {
 		return err
 	}
 
+	kbd.opMu.Lock()
+	defer kbd.opMu.Unlock()
+
 	modifiers, keycodes, ok, err := kbd.parseCombo(comboStr, "press")
 	if err != nil || !ok {
 		return err
 	}
 
-	hold := kbd.holdDuration()
+	var primaryKey uint8
+	if len(keycodes) == 1 {
+		primaryKey = keycodes[0]
+	}
+
+	hold := kbd.holdDurationForKey(primaryKey)
 
 	if modifiers != 0 && len(keycodes) > 0 {
-		if err := kbd.WriteReport(kbd.activeReport(modifiers)); err != nil {
+		if err := kbd.writeReportContext(ctx, kbd.activeReport(modifiers)); err != nil {
 			return err
 		}
-		if err := sleepContext(ctx, hold); err != nil {
-			_ = kbd.ReleaseKeys()
+		if err := sleepContext(ctx, kbd.holdDuration()); err != nil {
+			kbd.restoreHeldStateBestEffort()
 			return err
 		}
 	}
 
-	if err := kbd.WriteReport(kbd.activeReport(modifiers, keycodes...)); err != nil {
+	if len(keycodes) == 1 {
+		if preRelease, held := kbd.heldKeyPresent(primaryKey); held {
+			if err := kbd.writeReportContext(ctx, preRelease); err != nil {
+				return err
+			}
+			if err := sleepContext(ctx, kbd.holdDuration()); err != nil {
+				kbd.restoreHeldStateBestEffort()
+				return err
+			}
+		}
+	}
+
+	if err := kbd.writeReportContext(ctx, kbd.activeReport(modifiers, keycodes...)); err != nil {
 		return err
 	}
 
 	if err := sleepContext(ctx, hold); err != nil {
-		_ = kbd.ReleaseKeys()
+		kbd.restoreHeldStateBestEffort()
 		return err
 	}
-	if err := kbd.WriteReport(kbd.activeReport(0)); err != nil {
+	if err := kbd.writeReportContext(ctx, kbd.activeReport(0)); err != nil {
 		return err
 	}
-	return kbd.waitKeyDelay(ctx)
+	return kbd.waitKeyDelayForKey(ctx, primaryKey)
+}
+
+func isIgnoredFormatRune(r rune) bool {
+	return r == '\ufeff' || r == '\u200b' || r == '\u200c' || r == '\u200d'
 }
 
 // TypeString types out the given text string character by character according to the current layout and typing speed.
 func (kbd *Keyboard) TypeString(ctx context.Context, text string) error {
-	for _, r := range text {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	kbd.opMu.Lock()
+	defer kbd.opMu.Unlock()
+
+	for _, r := range normalized {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if isIgnoredFormatRune(r) {
+			continue
 		}
 
 		kbd.mu.Lock()
 		layout := kbd.layout
 		kbd.mu.Unlock()
 
-		report, ok := layout.Runes[r]
+		ks, ok := layout.Runes[r]
 		if !ok {
-			return fmt.Errorf("unmapped rune %q in layout %s", r, layout.Name)
+			continue
 		}
 
-		if err := kbd.WriteReport(kbd.activeReport(report[0], report.KeyCodes()...)); err != nil {
+		if err := kbd.tapCombo(ctx, ks.First); err != nil {
 			return err
 		}
-		if err := sleepContext(ctx, kbd.holdDuration()); err != nil {
-			_ = kbd.ReleaseKeys()
-			return err
-		}
-		if err := kbd.WriteReport(kbd.activeReport(0)); err != nil {
-			return err
-		}
-		if err := kbd.waitKeyDelay(ctx); err != nil {
-			return err
+		if ks.Second.KeyCode != 0 {
+			if err := kbd.tapCombo(ctx, ks.Second); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

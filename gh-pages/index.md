@@ -9,9 +9,9 @@ hide:
     <span>USB Gadget &amp; HID Appliance</span>
   </div>
   <h1>Raspiducky</h1>
-  <p class="hero-subtitle">A modern, high-performance USB Gadget and DuckyScript/HIDScript execution appliance for Raspberry Pi and Linux SBCs, featuring zero-reboot ConfigFS orchestration, dual scripting engines, and an embedded web dashboard.</p>
+  <p class="hero-subtitle">A modern, high-performance USB Gadget and DuckyScript/HIDScript execution appliance for Raspberry Pi and Linux SBCs, featuring zero-reboot ConfigFS orchestration, a direct DuckyScript 3.0 compiler, Goja JavaScript engine, and a hardened embedded web dashboard.</p>
   <div class="hero-badges">
-    <img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat&amp;logo=go" alt="Go Version">
+    <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&amp;logo=go" alt="Go Version">
     <img src="https://img.shields.io/badge/Linux-ConfigFS-FCC624?style=flat&amp;logo=linux" alt="Linux Kernel">
     <img src="https://img.shields.io/badge/USB-Gadget_API-412991?style=flat&amp;logo=usb" alt="USB Gadget">
     <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License MIT">
@@ -40,37 +40,37 @@ hide:
   <div class="feature-card">
     <i class="fa-solid fa-cube feature-icon" aria-hidden="true"></i>
     <h3>Single Binary Architecture</h3>
-    <p>Built in modern Golang with zero runtime external dependencies and an embedded Web UI via <code>go:embed</code>.</p>
+    <p>Built in pure Go (<code>CGO_ENABLED=0</code>) with zero runtime external dependencies and an embedded Web UI via <code>go:embed</code>.</p>
   </div>
 
   <div class="feature-card">
     <i class="fa-solid fa-microchip feature-icon" aria-hidden="true"></i>
     <h3>Linux Kernel ConfigFS</h3>
-    <p>Direct interaction with <code>/sys/kernel/config/usb_gadget</code> and <code>/dev/hidg*</code> char devices for dynamic gadget configuration without reboots.</p>
+    <p>Direct orchestration of <code>/sys/kernel/config/usb_gadget</code> and bounded non-hanging <code>/dev/hidg*</code> writes for dynamic composite gadgets without reboots.</p>
   </div>
 
   <div class="feature-card">
     <i class="fa-solid fa-code feature-icon" aria-hidden="true"></i>
     <h3>Dual Scripting Engine</h3>
-    <p>Native execution of standard Hak5 Rubber Ducky scripts (<code>.txt</code>) and advanced ECMAScript 5.1+ JavaScript payloads (<code>.js</code>).</p>
+    <p>Direct line-validated DuckyScript 1.0–3.0 compiler (<code>.txt</code>/<code>.ducky</code>) alongside an ECMAScript 5.1+ JavaScript runtime (<code>.js</code>) with instant interruption.</p>
   </div>
 
   <div class="feature-card">
     <i class="fa-solid fa-lightbulb feature-icon" aria-hidden="true"></i>
     <h3>Host LED Listener</h3>
-    <p>Monitors output reports from <code>/dev/hidg0</code> (<code>NUMLOCK</code>, <code>CAPSLOCK</code>, <code>SCROLLLOCK</code>) enabling target-host synchronization and trigger-based execution.</p>
+    <p>Captures EP0 <code>SET_REPORT</code> LED updates from <code>/dev/hidg0</code> (<code>NUMLOCK</code>, <code>CAPSLOCK</code>, <code>SCROLLLOCK</code>) with <code>no_out_endpoint=1</code> to conserve UDC endpoints.</p>
   </div>
 
   <div class="feature-card">
     <i class="fa-solid fa-gauge-high feature-icon" aria-hidden="true"></i>
-    <h3>Web Dashboard &amp; REST API</h3>
-    <p>Modern dark-mode SPA with real-time WebSocket log streaming, script editor, job manager, and live gadget controls.</p>
+    <h3>Hardened Dashboard &amp; API</h3>
+    <p>Dark-mode SPA with real-time WebSocket streaming, typing speed &amp; layout controls, endpoint budget guard, CSP, and same-origin CSRF protection.</p>
   </div>
 
   <div class="feature-card">
     <i class="fa-solid fa-layer-group feature-icon" aria-hidden="true"></i>
     <h3>Multi-Board Support</h3>
-    <p>Cross-compiled binaries for ARMv6, ARMv7, ARM64, and AMD64 targeting Raspberry Pi Zero, Pi 3, Pi 4, Pi 5, Orange Pi, and NanoPi.</p>
+    <p>Cross-compiled binaries for ARMv6, ARMv7, ARM64, and AMD64 targeting Raspberry Pi Zero, Zero 2 W, Pi 3A+, Pi 4B, Pi 5, Orange Pi, NanoPi, and Rock Pi.</p>
   </div>
 </div>
 
@@ -95,7 +95,7 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>Architecture &amp; Core Engine</h3>
-    <p>High-level system architecture, single-binary Go design, ConfigFS kernel interaction, and package breakdown.</p>
+    <p>High-level system architecture, single-binary Go design, ConfigFS lifecycle, bounded HID I/O, and package breakdown.</p>
   </a>
 
   <a href="usb-gadgets/" class="feature-card">
@@ -104,7 +104,7 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>USB Gadget Functions</h3>
-    <p>Technical breakdown of Keyboard, Mouse, Mass Storage, CDC-ECM/RNDIS Network, and ACM Serial interfaces.</p>
+    <p>Technical breakdown of Keyboard, Mouse, Mass Storage, independent RNDIS &amp; CDC ECM Network, ACM Serial, and endpoint math.</p>
   </a>
 
   <a href="scripting/" class="feature-card">
@@ -113,7 +113,7 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>DuckyScript &amp; JS Engines</h3>
-    <p>Dual scripting runtime guide, Hak5 Rubber Ducky syntax, Goja JavaScript API reference, and host LED listeners.</p>
+    <p>Direct DuckyScript 1.0–3.0 compiler syntax, Goja JavaScript API reference, typing timing model, and host LED synchronization.</p>
   </a>
 
   <a href="web-dashboard-api/" class="feature-card">
@@ -122,7 +122,7 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>Web Dashboard &amp; REST API</h3>
-    <p>Single Page Application features, REST endpoints reference, and WebSocket real-time event streaming.</p>
+    <p>Single-Page Application capabilities, REST endpoints reference, security headers, and real-time WebSocket event streaming.</p>
   </a>
 
   <a href="hardware-compatibility/" class="feature-card">
@@ -131,7 +131,7 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>Hardware &amp; SBC Matrix</h3>
-    <p>USB OTG controller types, DWC2 vs DWC3 IN endpoint hardware limits, supported boards, and binary assets.</p>
+    <p>USB OTG topology requirements, DWC2 vs DWC3 endpoint hardware budgets, supported boards, and release binary matrix.</p>
   </a>
 
   <a href="cli-automation/" class="feature-card">
@@ -140,7 +140,7 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>CLI &amp; Headless Automation</h3>
-    <p>Daemon mode flags, headless payload execution, systemd integration, and boot-time crontab automation.</p>
+    <p>Daemon mode flags, smart CLI-to-daemon delegation, systemd service integration, and boot-time crontab automation.</p>
   </a>
 
   <a href="installation/" class="feature-card">
@@ -149,6 +149,6 @@ hide:
       <span class="card-badge">Read →</span>
     </div>
     <h3>Installation &amp; Building</h3>
-    <p>One-line automated installation script, cross-compilation instructions, and building from source.</p>
+    <p>One-line automated installer, manual deployment, cross-compilation instructions, and building from source.</p>
   </a>
 </div>

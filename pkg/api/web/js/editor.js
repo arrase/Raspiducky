@@ -2,30 +2,80 @@
  * Script Execution Engine, Code Editor, Console Terminal & Payload Library Manager
  */
 
-// Line Numbers Sync
-function syncLineNumbersScroll() {
+const SNIPPETS = {
+    duckyscript: {
+        delay: 'DELAY 500\n',
+        string: 'STRING Hello World\n',
+        'gui-r': 'GUI r\n',
+        enter: 'ENTER\n'
+    },
+    javascript: {
+        delay: 'delay(500);\n',
+        string: 'type("Hello World");\n',
+        'gui-r': 'press("GUI r");\n',
+        enter: 'press("ENTER");\n'
+    }
+};
+
+function initEditorControls() {
     const editor = document.getElementById('code-editor');
-    const lineNumbersElem = document.getElementById('line-numbers');
-    lineNumbersElem.scrollTop = editor.scrollTop;
+    editor.addEventListener('input', updateLineNumbers);
+    editor.addEventListener('scroll', syncLineNumbersScroll);
+    editor.addEventListener('keydown', handleEditorKeyDown);
+
+    document.getElementById('script-format').addEventListener('change', onScriptFormatChange);
+    document.getElementById('editor-typing-delay').addEventListener('input', () => {
+        state.editorDelayDirty = true;
+    });
+
+    document.getElementById('btn-run-script').addEventListener('click', runScript);
+    document.getElementById('btn-stop-script').addEventListener('click', stopScript);
+    document.getElementById('btn-save-script').addEventListener('click', saveCurrentScript);
+    document.getElementById('btn-clear-console').addEventListener('click', clearConsole);
+    document.getElementById('log-filter').addEventListener('change', filterTerminalLogs);
+
+    document.getElementById('editor-quick-snippets').addEventListener('click', (event) => {
+        const chip = event.target.closest('[data-snippet]');
+        if (!chip) return;
+        const format = document.getElementById('script-format').value;
+        const snippetSet = SNIPPETS[format];
+        const snippet = snippetSet[chip.dataset.snippet];
+        if (snippet) {
+            insertSnippet(snippet);
+        }
+    });
+
+    document.getElementById('library-search-input').addEventListener('input', renderLibrary);
+    document.getElementById('btn-new-script').addEventListener('click', openNewScriptEditor);
+    document.getElementById('library-grid').addEventListener('click', handleLibraryGridClick);
+
+    updateLineNumbers();
 }
 
-function handleEditorKeyDown(e) {
-    if (e.key === 'Tab') {
-        e.preventDefault();
-        insertSnippet('    ');
+function syncLineNumbersScroll() {
+    const editor = document.getElementById('code-editor');
+    document.getElementById('line-numbers').scrollTop = editor.scrollTop;
+}
+
+function handleEditorKeyDown(event) {
+    if (event.key === 'Tab') {
+        event.preventDefault();
+        const editor = event.currentTarget;
+        editor.setRangeText('    ', editor.selectionStart, editor.selectionEnd, 'end');
     }
 }
 
 function updateLineNumbers() {
     const editor = document.getElementById('code-editor');
     const lineNumbersElem = document.getElementById('line-numbers');
+    const lineCount = editor.value.split('\n').length;
 
-    const lines = editor.value.split('\n').length;
-    let numbersHtml = '';
-    for (let i = 1; i <= lines; i++) {
-        numbersHtml += `${i}<br>`;
+    const numbers = new Array(lineCount);
+    for (let i = 0; i < lineCount; i++) {
+        numbers[i] = i + 1;
     }
-    lineNumbersElem.innerHTML = numbersHtml;
+    lineNumbersElem.textContent = numbers.join('\n');
+    lineNumbersElem.scrollTop = editor.scrollTop;
 }
 
 function insertSnippet(text) {
@@ -34,12 +84,12 @@ function insertSnippet(text) {
     const end = editor.selectionEnd;
     const val = editor.value;
 
+    let insertText = text;
     if (text.endsWith('\n') && start > 0 && val[start - 1] !== '\n') {
-        text = '\n' + text;
+        insertText = '\n' + text;
     }
 
-    editor.value = val.substring(0, start) + text + val.substring(end);
-    editor.selectionStart = editor.selectionEnd = start + text.length;
+    editor.setRangeText(insertText, start, end, 'end');
     editor.focus();
     updateLineNumbers();
 }
@@ -54,39 +104,43 @@ function onScriptFormatChange() {
     }
     const currentExt = formatSelect.value === 'javascript' ? '.js' : '.ducky';
     let baseName = name.replace(/\.(ducky|txt|js)$/i, '');
-    if (!baseName) baseName = 'untitled_payload';
+    if (!baseName) {
+        baseName = 'untitled_payload';
+    }
     titleInput.value = baseName + currentExt;
 }
 
-// Script Execution Engine Controls
-async function runScript() {
-    const code = document.getElementById('code-editor').value;
-    const name = document.getElementById('script-title').value.trim();
-    const type = document.getElementById('script-format').value;
-    const typingDelayMs = Number.parseInt(document.getElementById('editor-typing-delay').value, 10);
+function readEditorTypingDelay() {
+    const raw = Number.parseInt(document.getElementById('editor-typing-delay').value, 10);
+    if (Number.isNaN(raw)) {
+        return undefined;
+    }
+    return Math.max(0, raw);
+}
 
-    if (!code.trim()) {
+async function executePayload(script, name, type) {
+    if (!script.trim()) {
         appendLog('WARN', 'EDITOR', 'Cannot execute empty script.');
         return;
     }
 
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
-
     if (runBtn.disabled) return;
+
     runBtn.disabled = true;
     stopBtn.disabled = false;
+
+    const requestBody = { script, name, type };
+    const typingDelayMs = readEditorTypingDelay();
+    if (typingDelayMs !== undefined) {
+        requestBody.typingDelayMs = typingDelayMs;
+    }
 
     appendLog('INFO', 'RUNNER', `Triggering execution for payload: ${name} (${type})...`);
 
     try {
-        const response = await apiCall('/api/run', 'POST', {
-            script: code,
-            name,
-            type,
-            typingDelayMs
-        });
-
+        const response = await apiCall('/api/run', 'POST', requestBody);
         if (response.jobId && state.lastTerminalJobId !== response.jobId) {
             updateJobStatusUI({
                 id: response.jobId,
@@ -102,15 +156,39 @@ async function runScript() {
     }
 }
 
+async function runScript() {
+    const code = document.getElementById('code-editor').value;
+    const name = document.getElementById('script-title').value.trim() || 'inline_payload';
+    const type = document.getElementById('script-format').value;
+    await executePayload(code, name, type);
+}
+
 async function stopScript() {
     appendLog('WARN', 'RUNNER', 'Requesting emergency stop for active payload job...');
 
     try {
         await apiCall('/api/stop', 'POST', {});
-        appendLog('INFO', 'RUNNER', 'Job stop signal dispatched successfully.');
-        updateJobStatusUI({ status: 'STOPPED' });
+        appendLog('INFO', 'RUNNER', 'Job stopped.');
+        await syncJobStatus();
     } catch (err) {
         appendLog('ERROR', 'RUNNER', `Failed to stop job: ${err.message}`);
+    }
+}
+
+async function syncJobStatus() {
+    try {
+        const job = await apiCall('/api/job');
+        if (!job) {
+            clearJobTimer();
+            document.getElementById('btn-run-script').disabled = false;
+            document.getElementById('btn-stop-script').disabled = true;
+            document.getElementById('job-status-bar').classList.add('hidden');
+            state.jobStartTime = null;
+            return;
+        }
+        updateJobStatusUI(job);
+    } catch (err) {
+        console.warn('Failed to sync job status:', err);
     }
 }
 
@@ -130,7 +208,7 @@ function updateJobStatusUI(job) {
     const runBtn = document.getElementById('btn-run-script');
     const stopBtn = document.getElementById('btn-stop-script');
 
-    const status = job.status.toUpperCase();
+    const status = String(job.status).toUpperCase();
     const isTerminal = status === 'COMPLETED' || status === 'FAILED' || status === 'STOPPED';
 
     if (isTerminal) {
@@ -193,26 +271,48 @@ function matchesLogFilter(level, source, filter) {
     return level === filter;
 }
 
-function appendLog(level, source, message) {
-    const terminal = document.getElementById('terminal-output');
-    const currentFilter = document.getElementById('log-filter').value;
-    const normLevel = level.toUpperCase();
-    const normSource = source.toUpperCase();
+function resolveLogTagVariant(normLevel, normSource) {
+    if (normLevel === 'WARN' || normLevel === 'ERROR') {
+        return normLevel.toLowerCase();
+    }
+    return normSource === 'HID' ? 'hid' : 'info';
+}
+
+function createLogEntry(level, source, message) {
+    const normLevel = String(level).toUpperCase();
+    const normSource = String(source).toUpperCase();
     const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
-    const tagClass = `tag-${normLevel.toLowerCase()}`;
+    const tagVariant = resolveLogTagVariant(normLevel, normSource);
 
     const entry = document.createElement('div');
     entry.className = `log-entry log-${normLevel.toLowerCase()}`;
     entry.dataset.level = normLevel;
     entry.dataset.source = normSource;
-    entry.style.display = matchesLogFilter(normLevel, normSource, currentFilter) ? 'flex' : 'none';
-    entry.innerHTML = `
-        <span class="log-time">[${timeStr}]</span>
-        <span class="log-tag ${tagClass}">${source}</span>
-        <span class="log-msg">${escapeHtml(message)}</span>
-    `;
 
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = `[${timeStr}]`;
+
+    const tagSpan = document.createElement('span');
+    tagSpan.className = `log-tag tag-${tagVariant}`;
+    tagSpan.textContent = normSource;
+
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'log-msg';
+    msgSpan.textContent = String(message);
+
+    entry.append(timeSpan, tagSpan, msgSpan);
+    return entry;
+}
+
+function appendLog(level, source, message) {
+    const terminal = document.getElementById('terminal-output');
+    const currentFilter = document.getElementById('log-filter').value;
+    const entry = createLogEntry(level, source, message);
+
+    entry.style.display = matchesLogFilter(entry.dataset.level, entry.dataset.source, currentFilter) ? 'flex' : 'none';
     terminal.appendChild(entry);
+
     while (terminal.childElementCount > 500) {
         terminal.firstElementChild.remove();
     }
@@ -221,33 +321,18 @@ function appendLog(level, source, message) {
 
 function clearConsole() {
     const terminal = document.getElementById('terminal-output');
-    terminal.innerHTML = `
-        <div class="log-entry log-system" data-level="INFO" data-source="SYS">
-            <span class="log-time">[${new Date().toLocaleTimeString('en-US', { hour12: false })}]</span>
-            <span class="log-tag tag-info">SYS</span>
-            <span class="log-msg">Console cleared.</span>
-        </div>
-    `;
+    terminal.replaceChildren(createLogEntry('INFO', 'SYS', 'Console cleared.'));
     filterTerminalLogs();
 }
 
 function filterTerminalLogs() {
     const filter = document.getElementById('log-filter').value;
-    const entries = document.querySelectorAll('.terminal-body .log-entry');
+    const entries = document.querySelectorAll('#terminal-output .log-entry');
 
-    entries.forEach(entry => {
+    for (const entry of entries) {
         const visible = matchesLogFilter(entry.dataset.level, entry.dataset.source, filter);
         entry.style.display = visible ? 'flex' : 'none';
-    });
-}
-
-function escapeHtml(str) {
-    return String(str)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
+    }
 }
 
 // Payload Library Management
@@ -263,58 +348,98 @@ async function loadScriptsLibrary() {
     }
 }
 
+function createActionButton(className, action, scriptName, labelText) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className;
+    btn.dataset.action = action;
+    btn.dataset.name = scriptName;
+    btn.textContent = labelText;
+    return btn;
+}
+
 function renderLibrary() {
     const grid = document.getElementById('library-grid');
     const query = document.getElementById('library-search-input').value.toLowerCase().trim();
-    const filtered = state.scripts.filter(s =>
+    const filtered = state.scripts.filter((s) =>
         s.name.toLowerCase().includes(query) ||
         s.description.toLowerCase().includes(query)
     );
 
     if (filtered.length === 0) {
-        grid.innerHTML = `
-            <div class="glass-card" style="grid-column: 1 / -1; text-align: center; color: var(--text-muted);">
-                <p>No saved payloads found in library.</p>
-            </div>
-        `;
+        const emptyCard = document.createElement('div');
+        emptyCard.className = 'glass-card library-empty';
+        const msg = document.createElement('p');
+        msg.textContent = 'No saved payloads found in library.';
+        emptyCard.appendChild(msg);
+        grid.replaceChildren(emptyCard);
         return;
     }
 
-    grid.innerHTML = filtered.map(s => {
-        const badgeClass = s.type === 'javascript' ? 'badge-js' : 'badge-ducky';
-        const typeLabel = s.type === 'javascript' ? 'JavaScript' : 'DuckyScript';
-        const safeName = encodeURIComponent(s.name);
+    const fragment = document.createDocumentFragment();
+    for (const s of filtered) {
+        const isJS = s.type === 'javascript';
 
-        return `
-            <div class="script-card">
-                <div>
-                    <div class="script-card-header">
-                        <span class="script-card-title">${escapeHtml(s.name)}</span>
-                        <span class="script-badge ${badgeClass}">${typeLabel}</span>
-                    </div>
-                    <p class="script-card-desc">${escapeHtml(s.description)}</p>
-                    <div class="script-code-preview">${escapeHtml(s.content)}</div>
-                </div>
-                <div class="script-card-actions">
-                    <button class="btn btn-xs btn-primary" onclick="loadScriptToEditor(decodeURIComponent('${safeName}'))">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        Load in Editor
-                    </button>
-                    <button class="btn btn-xs btn-success" onclick="quickRunScript(decodeURIComponent('${safeName}'))">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        Quick Run
-                    </button>
-                    <button class="btn btn-xs btn-danger" onclick="deleteScriptFromLibrary(decodeURIComponent('${safeName}'))">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const card = document.createElement('div');
+        card.className = 'script-card';
+
+        const top = document.createElement('div');
+
+        const header = document.createElement('div');
+        header.className = 'script-card-header';
+
+        const title = document.createElement('span');
+        title.className = 'script-card-title';
+        title.textContent = s.name;
+
+        const badge = document.createElement('span');
+        badge.className = `script-badge ${isJS ? 'badge-js' : 'badge-ducky'}`;
+        badge.textContent = isJS ? 'JavaScript' : 'DuckyScript';
+
+        header.append(title, badge);
+
+        const desc = document.createElement('p');
+        desc.className = 'script-card-desc';
+        desc.textContent = s.description;
+
+        const preview = document.createElement('div');
+        preview.className = 'script-code-preview';
+        preview.textContent = s.content;
+
+        top.append(header, desc, preview);
+
+        const actions = document.createElement('div');
+        actions.className = 'script-card-actions';
+
+        const loadBtn = createActionButton('btn btn-xs btn-primary', 'load', s.name, 'Load in Editor');
+        const runBtn = createActionButton('btn btn-xs btn-success', 'run', s.name, 'Quick Run');
+        const deleteBtn = createActionButton('btn btn-xs btn-danger', 'delete', s.name, 'Delete');
+        deleteBtn.setAttribute('aria-label', `Delete ${s.name}`);
+
+        actions.append(loadBtn, runBtn, deleteBtn);
+        card.append(top, actions);
+        fragment.appendChild(card);
+    }
+
+    grid.replaceChildren(fragment);
+}
+
+function handleLibraryGridClick(event) {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+
+    const { action, name } = btn.dataset;
+    if (action === 'load') {
+        loadScriptToEditor(name);
+    } else if (action === 'run') {
+        void quickRunScript(name);
+    } else if (action === 'delete') {
+        void deleteScriptFromLibrary(name);
+    }
 }
 
 function loadScriptToEditor(name) {
-    const s = state.scripts.find(item => item.name === name);
+    const s = state.scripts.find((item) => item.name === name);
     if (!s) return;
 
     document.getElementById('script-title').value = s.name;
@@ -326,10 +451,11 @@ function loadScriptToEditor(name) {
 }
 
 async function quickRunScript(name) {
-    if (!state.scripts.some(item => item.name === name)) return;
+    const s = state.scripts.find((item) => item.name === name);
+    if (!s) return;
 
-    loadScriptToEditor(name);
-    await runScript();
+    switchTab('editor');
+    await executePayload(s.content, s.name, s.type);
 }
 
 async function saveCurrentScript() {
@@ -343,18 +469,12 @@ async function saveCurrentScript() {
         return;
     }
 
-    const payload = {
-        name,
-        type,
-        content
-    };
-
     try {
-        const res = await apiCall('/api/scripts', 'POST', payload);
+        const res = await apiCall('/api/scripts', 'POST', { name, type, content });
         if (res?.name) {
             titleInput.value = res.name;
         }
-        appendLog('INFO', 'LIBRARY', `Payload [${titleInput.value}] saved to library successfully!`);
+        appendLog('INFO', 'LIBRARY', `Payload [${titleInput.value}] saved to library.`);
         await loadScriptsLibrary();
     } catch (err) {
         appendLog('ERROR', 'LIBRARY', `Failed to save payload: ${err.message}`);
@@ -373,7 +493,7 @@ async function deleteScriptFromLibrary(name) {
     }
 }
 
-function openNewScriptModal() {
+function openNewScriptEditor() {
     document.getElementById('script-title').value = 'new_payload.ducky';
     document.getElementById('script-format').value = 'duckyscript';
     document.getElementById('code-editor').value = 'REM New Raspiducky Payload\nDELAY 1000\n';

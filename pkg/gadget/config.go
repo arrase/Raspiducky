@@ -127,7 +127,6 @@ func EndpointCosts() map[string]int {
 		"rndis":    EndpointsRNDIS,
 		"ecm":      EndpointsECM,
 		"serial":   EndpointsACM,
-		"ethernet": EndpointsRNDIS + EndpointsECM,
 	}
 }
 

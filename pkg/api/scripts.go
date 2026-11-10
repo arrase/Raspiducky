@@ -15,11 +15,8 @@ import (
 )
 
 const (
-	defaultDelay1000 = "DELAY 1000\n"
-	defaultEnter     = "ENTER\n"
-	defaultJSDelay   = "    delay(200);\n"
-	duckyExt         = ".ducky"
-	scriptsMetaFile  = "scripts_meta.json"
+	duckyExt        = ".ducky"
+	scriptsMetaFile = "scripts_meta.json"
 )
 
 // Script validation and lookup errors.
@@ -71,23 +68,31 @@ func (sm *ScriptManager) saveDescriptionsLocked(descriptions map[string]string) 
 	}
 }
 
+func parseCommentLine(trimmed string) (string, bool) {
+	if len(trimmed) >= 4 && strings.EqualFold(trimmed[:4], "REM ") {
+		return strings.TrimSpace(trimmed[4:]), true
+	}
+	for _, prefix := range []string{"//", "#"} {
+		if after, ok := strings.CutPrefix(trimmed, prefix); ok {
+			return strings.TrimSpace(after), true
+		}
+	}
+	return "", false
+}
+
 func extractDefaultDescription(content, scriptType string) string {
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		if strings.HasPrefix(strings.ToUpper(trimmed), "REM ") {
-			if desc := strings.TrimSpace(trimmed[4:]); desc != "" {
-				return desc
-			}
+		comment, isComment := parseCommentLine(trimmed)
+		if !isComment {
+			break
 		}
-		if strings.HasPrefix(trimmed, "//") {
-			if desc := strings.TrimSpace(strings.TrimPrefix(trimmed, "//")); desc != "" {
-				return desc
-			}
+		if comment != "" {
+			return comment
 		}
-		break
 	}
 	return fmt.Sprintf("Saved %s payload", scriptType)
 }
@@ -105,25 +110,19 @@ func (sm *ScriptManager) ListScripts() ([]Script, error) {
 	descriptions := sm.loadDescriptionsLocked()
 	scripts := make([]Script, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || !isScriptFile(entry.Name()) {
 			continue
 		}
 
 		name := entry.Name()
-		if !isScriptFile(name) {
-			continue
-		}
-
-		filePath := filepath.Join(sm.storageDir, name)
-		contentBytes, err := os.ReadFile(filePath)
+		contentBytes, err := os.ReadFile(filepath.Join(sm.storageDir, name))
 		if err != nil {
 			log.Printf("[Scripts] Failed to read script %s: %v", name, err)
 			continue
 		}
 
-		info, _ := entry.Info()
 		modTime := time.Now()
-		if info != nil {
+		if info, infoErr := entry.Info(); infoErr == nil && info != nil {
 			modTime = info.ModTime()
 		}
 
@@ -214,7 +213,7 @@ func (sm *ScriptManager) DeleteScript(name string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("%w: '%s'", ErrScriptNotFound, name)
 	}
 
@@ -232,11 +231,10 @@ func (sm *ScriptManager) DeleteScript(name string) error {
 }
 
 func (sm *ScriptManager) seedDefaultScripts() error {
-	entries, err := os.ReadDir(sm.storageDir)
-	if err == nil {
+	if entries, err := os.ReadDir(sm.storageDir); err == nil {
 		for _, entry := range entries {
 			if !entry.IsDir() && isScriptFile(entry.Name()) {
-				return nil // Directory already contains scripts
+				return nil
 			}
 		}
 	}
@@ -244,49 +242,53 @@ func (sm *ScriptManager) seedDefaultScripts() error {
 	defaults := []Script{
 		{
 			Name: "windows_reverse_shell.ducky",
-			Type: "duckyscript",
-			Content: "REM Windows Powershell Launcher\n" +
-				defaultDelay1000 +
-				"GUI r\n" +
-				"DELAY 500\n" +
-				"STRING powershell -NoP -NonI -W Hidden -Exec Bypass -Command \"Write-Host Raspiducky Payload Executed!\"\n" +
-				defaultEnter,
+			Type: scripting.TypeDuckyScript,
+			Content: `REM Windows Powershell Launcher
+DELAY 1000
+GUI r
+DELAY 500
+STRING powershell -NoP -NonI -W Hidden -Exec Bypass -Command "Write-Host Raspiducky Payload Executed!"
+ENTER
+`,
 		},
 		{
 			Name: "macos_terminal_opener.ducky",
-			Type: "duckyscript",
-			Content: "REM macOS Spotlight Launcher\n" +
-				defaultDelay1000 +
-				"GUI SPACE\n" +
-				"DELAY 500\n" +
-				"STRING Terminal\n" +
-				defaultEnter +
-				defaultDelay1000 +
-				"STRING echo \"Raspiducky macOS Payload Active!\"\n" +
-				defaultEnter,
+			Type: scripting.TypeDuckyScript,
+			Content: `REM macOS Spotlight Launcher
+DELAY 1000
+GUI SPACE
+DELAY 500
+STRING Terminal
+ENTER
+DELAY 1000
+STRING echo "Raspiducky macOS Payload Active!"
+ENTER
+`,
 		},
 		{
 			Name: "mouse_jiggler.js",
-			Type: "javascript",
-			Content: "// Raspiducky JS Mouse Jiggler\n" +
-				"console.log(\"Starting Mouse Jiggler loop...\");\n" +
-				"for (let i = 0; i < 10; i++) {\n" +
-				"    mouseMove(10, 0);\n" +
-				defaultJSDelay +
-				"    mouseMove(0, 10);\n" +
-				defaultJSDelay +
-				"    mouseMove(-10, 0);\n" +
-				defaultJSDelay +
-				"    mouseMove(0, -10);\n" +
-				defaultJSDelay +
-				"}\n" +
-				"console.log(\"Jiggler finished!\");\n",
+			Type: scripting.TypeJavaScript,
+			Content: `// Raspiducky JS Mouse Jiggler
+console.log("Starting Mouse Jiggler loop...");
+for (let i = 0; i < 10; i++) {
+    mouseMove(10, 0);
+    delay(200);
+    mouseMove(0, 10);
+    delay(200);
+    mouseMove(-10, 0);
+    delay(200);
+    mouseMove(0, -10);
+    delay(200);
+}
+console.log("Jiggler finished!");
+`,
 		},
 	}
 
 	for _, d := range defaults {
-		_ = os.WriteFile(filepath.Join(sm.storageDir, d.Name), []byte(d.Content), 0644)
+		if err := os.WriteFile(filepath.Join(sm.storageDir, d.Name), []byte(d.Content), 0644); err != nil {
+			return err
+		}
 	}
-
 	return nil
 }

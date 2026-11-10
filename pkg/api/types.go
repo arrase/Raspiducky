@@ -54,16 +54,24 @@ type RunRequest struct {
 	Script        string `json:"script"`
 	Name          string `json:"name,omitempty"`
 	Type          string `json:"type"` // "duckyscript" or "javascript"
-	TypingDelayMs int    `json:"typingDelayMs,omitempty"`
+	TypingDelayMs *int   `json:"typingDelayMs,omitempty"`
 	Layout        string `json:"layout,omitempty"`
 }
+
+// Job execution lifecycle status values.
+const (
+	JobStatusRunning   = "running"
+	JobStatusCompleted = "completed"
+	JobStatusStopped   = "stopped"
+	JobStatusFailed    = "failed"
+)
 
 // JobStatus describes an active or past script execution job.
 type JobStatus struct {
 	ID         string     `json:"id"`
 	ScriptName string     `json:"name"`
 	Type       string     `json:"type"`
-	Status     string     `json:"status"` // "running", "completed", "stopped", "failed"
+	Status     string     `json:"status"`
 	StartedAt  time.Time  `json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Error      string     `json:"error,omitempty"`

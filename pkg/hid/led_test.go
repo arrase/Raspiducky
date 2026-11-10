@@ -177,4 +177,7 @@ func TestParseLEDMask(t *testing.T) {
 	if _, err := ParseLEDMask("INVALID"); err == nil {
 		t.Error("Expected error for invalid LED mask")
 	}
+	if _, err := ParseLEDMask("NUM|TYPO"); err == nil {
+		t.Error("Expected error for partially invalid LED mask")
+	}
 }

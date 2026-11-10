@@ -2,6 +2,7 @@ package hid
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -23,6 +24,18 @@ func TestMouse_MoveAndButtons(t *testing.T) {
 		t.Errorf("Unexpected relative move report: %v", rep)
 	}
 
+	// Large relative move (>127) splits into multiple reports without int8 overflow
+	buf.Reset()
+	if err := m.MoveContext(context.Background(), 300, -150); err != nil {
+		t.Fatalf("MoveContext large delta failed: %v", err)
+	}
+	if len(buf.Bytes()) != 18 {
+		t.Fatalf("Expected 3 reports (18 bytes) for MoveContext(300,-150), got %d", len(buf.Bytes()))
+	}
+	if int8(buf.Bytes()[2]) != 127 || int8(buf.Bytes()[8]) != 127 || int8(buf.Bytes()[14]) != 46 {
+		t.Errorf("Unexpected X split deltas: %d, %d, %d", int8(buf.Bytes()[2]), int8(buf.Bytes()[8]), int8(buf.Bytes()[14]))
+	}
+
 	buf.Reset()
 	if err := m.MoveTo(1000, 2000); err != nil {
 		t.Fatalf("MoveTo failed: %v", err)
@@ -41,11 +54,11 @@ func TestMouse_MoveAndButtons(t *testing.T) {
 	}
 
 	buf.Reset()
-	if err := m.ButtonUp("left"); err != nil {
-		t.Fatalf("ButtonUp failed: %v", err)
+	if err := m.ReleaseButtons(); err != nil {
+		t.Fatalf("ReleaseButtons failed: %v", err)
 	}
-	if buf.Bytes()[1] != 0 {
-		t.Errorf("Expected left button bit cleared, got %#x", buf.Bytes()[1])
+	if len(buf.Bytes()) != 6 || buf.Bytes()[1] != 0 {
+		t.Errorf("Expected ReleaseButtons report clearing buttons, got %v", buf.Bytes())
 	}
 
 	buf.Reset()

@@ -12,31 +12,34 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=sqale_rating)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=arrase_Raspiducky&metric=ncloc)](https://sonarcloud.io/summary/overall?id=arrase_Raspiducky)
 
-A modern, high-performance, and lightweight USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi Zero W (and compatible SBCs).
+A modern, high-performance, and lightweight USB Gadget & DuckyScript/HIDScript execution appliance for Raspberry Pi Zero W, Pi 4/5, and compatible Linux SBCs.
 
-Designed to run as a **single Go executable** on lightweight Linux distributions (like Raspberry Pi OS Lite), Raspiducky turns your Pi into a powerful, multi-purpose USB attack/automation tool.
+Designed to run as a **single Go executable** on lightweight Linux distributions (such as Raspberry Pi OS Lite), Raspiducky turns your SBC into a versatile, multi-function USB automation and HID testing appliance.
+
+📖 **Full Documentation:** [https://arrase.github.io/Raspiducky/](https://arrase.github.io/Raspiducky/)
 
 ---
 
 ## ✨ Why Raspiducky?
 
-* **Single Executable Binary:** Built in modern Golang, incorporating an embedded REST API, WebSocket server, CLI commands, and a sleek single-page web dashboard using `go:embed`.
-* **Plug & Play Linux USB ConfigFS:** Direct interaction with `/sys/kernel/config/usb_gadget` for runtime configuration *without* system reboots.
-  * ⌨️ **HID Keyboard:** 8-byte reports with multi-language layout translation (**US**, **ES**, **DE**, **FR**).
-  * 🖱️ **HID Mouse:** Relative movements, absolute positioning, and button clicks.
-  * 💾 **USB Mass Storage (UMS):** Mount ISO or RAW disk image backing files in CD-ROM or writable Flash Drive modes.
-  * 🌐 **USB Network:** CDC ECM (Linux/Mac) and RNDIS (Windows) with custom MAC addresses and Windows OS descriptors.
-  * 🔌 **USB Serial:** CDC ACM serial device interface.
+* **Single Executable Binary:** Built in pure Go (`CGO_ENABLED=0`), bundling an embedded REST API, real-time WebSocket hub, CLI runner, and single-page web dashboard via `go:embed`.
+* **Plug & Play Linux USB ConfigFS:** Direct orchestration of `/sys/kernel/config/usb_gadget` for runtime composite reconfiguration *without* system reboots.
+  * ⌨️ **HID Keyboard:** 8-byte boot-protocol reports with multi-language layout translation (**US**, **ES**, **DE**, **FR**), dead-key support, configurable keystroke speed (`0ms` raw burst or console-safe pacing), and bounded non-hanging `/dev/hidg0` writes.
+  * 🖱️ **HID Mouse:** 6-byte composite relative movement (with automatic multi-report splitting for deltas `> ±127`), 15-bit absolute screen positioning (`0..32767`), and button clicks.
+  * 💾 **USB Mass Storage (UMS):** Mount ISO or RAW disk image backing files in CD-ROM or read/write Flash Drive modes.
+  * 🌐 **USB Network:** Independently selectable **CDC ECM** (Linux/macOS/Android) and **RNDIS** (Windows with automatic Microsoft OS 1.0 `MSFT100` descriptors) with custom MAC addresses.
+  * 🔌 **USB Serial:** CDC ACM serial console interface (`/dev/ttyGS0`).
 * **Dual Scripting Engines:**
-  * **JavaScript Engine (Goja):** Pure Go ECMAScript 5.1+ runtime with native USB HID bindings (`type()`, `press()`, `delay()`, `layout()`, `typingSpeed()`, `waitLED()`, `mouseMove()`, `mouseMoveTo()`, `mouseClick()`).
-  * **DuckyScript Parser:** Transparently parses and executes standard Hak5 Rubber Ducky `.txt` scripts.
-* **Host Keyboard LED State Listener:** Reads output reports from `/dev/hidg0` (NUMLOCK, CAPSLOCK, SCROLLLOCK), enabling synchronization and payload triggering based on target host interactions.
+  * **Direct DuckyScript Compiler (`.txt` / `.ducky`):** Validates and compiles DuckyScript 1.0–3.0 syntax (`STRING`..`END_STRING`, `STRINGLN`..`END_STRINGLN`, `REM_BLOCK`..`END_REM`, `REPEAT`, `LAYOUT`, `TYPING_SPEED`/`STRINGDELAY`, `WAIT_LED`, `MOUSE_*`, `HOLD`/`RELEASE`) directly into native HID instructions with line-accurate compile-time error reporting.
+  * **JavaScript Engine (`.js` via Goja):** Pure Go ECMAScript 5.1+ runtime with native USB HID bindings (`type()`, `press()`, `hold()`, `release()`, `delay()`, `layout()`, `typingSpeed()`, `waitLED()`, `mouseMove()`, `mouseMoveTo()`, `mouseClick()`), instant cancellation (`vm.Interrupt`), and automatic release of held keys/buttons on exit.
+* **Host Keyboard LED State Listener:** Reads EP0 `SET_REPORT` LED updates from `/dev/hidg0` (`NUMLOCK`, `CAPSLOCK`, `SCROLLLOCK`) with `no_out_endpoint=1`, enabling host synchronization without consuming dedicated OUT hardware endpoints.
+* **Hardened Web Dashboard & API:** Protected by strict `Content-Security-Policy`, `X-Frame-Options: DENY`, and same-origin (`Sec-Fetch-Site` / `Origin`) CSRF enforcement.
 
 ---
 
 ## 🖼️ Web Dashboard Showcase
 
-A sleek, dark-mode single-page dashboard with real-time WebSocket log streaming, a payload editor, job manager, and gadget controls.
+A sleek, dark-mode single-page dashboard with real-time WebSocket log streaming, a payload editor, job manager, typing delay controls, and live USB endpoint budget tracking.
 
 | Main Dashboard & Gadget Control | Script Editor & Live Execution Console |
 | :---: | :---: |
@@ -60,147 +63,149 @@ Run this single command on your Raspberry Pi (or compatible Linux target):
 curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh | sudo sh
 ```
 
-**¿What does this script do?**
-* Automatically detects your architecture and downloads the latest release binary.
-* Configures the required USB Gadget kernel overlays.
-* Installs and starts Raspiducky as a **background system service**.
+**What does this script do?**
+* Automatically detects your CPU architecture (`armv6l`, `armv7l`, `aarch64`, `x86_64`) and downloads the latest release binary into a secure temporary directory.
+* Configures the `dtoverlay=dwc2,dr_mode=peripheral` kernel overlay under `[all]`, loads `dwc2` and `libcomposite`, mounts `debugfs`, and sets up `udev` rules for `/dev/hidg*`.
+* Installs and starts `raspiducky.service` as a **background systemd service** while preserving your saved layout and gadget profile across updates and reboots.
 
 *Note: Running this command again in the future will automatically update Raspiducky to the latest GitHub release.*
 
 ### 🌐 2. Using the Application
 
-Once installed via the script above, **Raspiducky is already running in the background!** You do not need to start it manually from the terminal.
+Once installed via the script above, **Raspiducky is already running in the background!**
 
-Simply open your web browser on any device in the same network and navigate to:
+Open your web browser on any device in the same network and navigate to:
 
-```
+```text
 http://<raspberry-pi-ip>:8000
 ```
 
-From this live dashboard, you can configure your USB gadget settings, manage payloads, and execute scripts interactively.
+From this live dashboard, you can configure USB gadget functions, select keyboard layout and typing delay (`10ms` default for broad host/console compatibility, or `0ms` for maximum raw speed), manage payloads, and execute scripts interactively.
 
 ---
 
 ## 💻 Hardware Compatibility & USB OTG Support
 
-> ⚠️ **Important Hardware Requirement**:
-> USB Gadget mode requires a Single Board Computer (SBC) where the USB OTG controller (DWC2, DWC3, or MUSB) is connected directly to a Micro-USB or USB-C OTG port **without an onboard USB Hub chip**.
+> [!WARNING]
+> USB Gadget mode requires a Single Board Computer (SBC) where the USB OTG controller (`dwc2`, `dwc3`, or `musb`) is wired directly to a Micro-USB or USB-C OTG port **without an onboard USB Hub chip**.
 >
-> * ✅ **Supported RPi Ports**: Raspberry Pi Zero / Zero W / Zero 2 W (Micro-USB USB port), Raspberry Pi 3A+ / A+ (Type-A OTG port), Raspberry Pi 4B / 5 (USB-C power/data port).
-> * ❌ **Unsupported RPi Ports**: Standard Type-A ports on Raspberry Pi 1B, 2B, 3B, and 3B+ pass through an onboard LAN9512/LAN9514/LAN7515 USB hub chip which prevents USB Device/Gadget mode.
+> * ✅ **Supported RPi Ports**: Raspberry Pi Zero / Zero W / Zero 2 W (Micro-USB data port), Raspberry Pi A / A+ / 3A+ (Type-A OTG port), Raspberry Pi 4B / 5 (USB-C power/data port with `dr_mode=peripheral`).
+> * ❌ **Unsupported RPi Ports**: Standard Type-A ports on Raspberry Pi 1B, 2B, 3B, and 3B+ sit behind an onboard LAN9512/LAN9514/LAN7515 USB hub chip, locking them into USB Host mode.
 
 ### 🚦 Hardware Endpoint Limits
 
-Depending on your SBC's USB controller, there is a physical hardware limit on the maximum number of **USB IN Endpoints** that can be active simultaneously:
+USB Device Controllers enforce a physical ceiling on the total number of active hardware endpoints (`EP0` + `IN` + `OUT`) across all enabled composite functions:
 
-* **Raspberry Pi Zero / 1 / 2 / 3 (DWC2 Controller)**: Limited to **7 IN Endpoints**.
-* **Raspberry Pi 4 / 5 (DWC3 Controller)**: Limited to **15 IN Endpoints**.
-* **Other SBCs (e.g., Orange Pi, NanoPi)**: Varies depending on the SoC's USB controller.
+* **Raspberry Pi Zero / Zero 2 W / A+ / 3A+ / 4B / 5 (`dwc2` Controller)**: **7 total hardware endpoints** (`num_dev_ep: 7`, i.e., `1 EP0 + 6 function endpoints`).
+* **Rockchip RK3399 / RK3588 & `dwc3` SBCs (e.g., Rock Pi 4/5, Orange Pi 5)**: Up to **15+ endpoints** depending on SoC synthesis.
 
-**Endpoint Consumption per Function:**
-* ⌨️ **USB Keyboard (HID)**: 1 Endpoint
-* 🖱️ **USB Mouse (HID)**: 1 Endpoint
-* 💾 **Mass Storage**: 1 Endpoint
-* 🔌 **USB Serial Console (ACM)**: 2 Endpoints
-* 🌐 **USB Ethernet (RNDIS/ECM)**: 4 Endpoints (2 for RNDIS, 2 for ECM)
+**Hardware Endpoint Cost per Function:**
+* 🔹 **Control Endpoint (`EP0`)**: `1` endpoint *(allocated whenever any USB function is enabled)*
+* ⌨️ **HID Keyboard (`hid.usb0`)**: `1` endpoint *(Interrupt IN; `no_out_endpoint=1` routes LED reports via `EP0`)*
+* 🖱️ **HID Mouse (`hid.usb1`)**: `1` endpoint *(Interrupt IN; `no_out_endpoint=1`)*
+* 💾 **Mass Storage (`mass_storage.usb0`)**: `2` endpoints *(Bulk IN + Bulk OUT)*
+* 🌐 **USB Ethernet — RNDIS (`rndis.usb0`)**: `3` endpoints *(Interrupt IN + Bulk IN + Bulk OUT)*
+* 🌐 **USB Ethernet — CDC ECM (`ecm.usb0`)**: `3` endpoints *(Interrupt IN + Bulk IN + Bulk OUT)*
+* 🔌 **USB Serial Console (`acm.usb0`)**: `3` endpoints *(Interrupt IN + Bulk IN + Bulk OUT)*
 
-*The Raspiducky Web Dashboard automatically reads your specific board's limits directly from the kernel DebugFS and prevents you from deploying a combination of functions that exceeds your hardware's capabilities.*
+*The Web Dashboard and REST API automatically query `/sys/kernel/debug/usb/<udc>/hw_params` (`maxEndpoints` / `usedEndpoints`) and prevent deploying combinations that exceed your board's physical UDC budget.*
 
 ### 📋 Supported Boards & Binary Asset Matrix
 
 | Asset Name | Architecture | Target SBC Boards | USB OTG Port |
 |---|---|---|---|
-| **`raspiducky-linux-armv6`** | ARMv6 (32-bit) | • **RPi Zero / Zero W**<br>• **RPi Model A / A+** | Micro-USB |
-| **`raspiducky-linux-armv7`** | ARMv7 (32-bit) | • **RPi 3A+** *(32-bit OS)*<br>• **RPi CM 3**<br>• **Banana Pi M2 Zero/M1**<br>• **Orange Pi Zero/One/PC**<br>• **NanoPi NEO** | Micro-USB |
+| **`raspiducky-linux-armv6`** | ARMv6 (32-bit) | • **RPi Zero / Zero W**<br>• **RPi Model A / A+** | Micro-USB / Type-A OTG |
+| **`raspiducky-linux-armv7`** | ARMv7 (32-bit) | • **RPi 3A+** *(32-bit OS)*<br>• **RPi CM 3**<br>• **Banana Pi M2 Zero/M1**<br>• **Orange Pi Zero/One/PC**<br>• **NanoPi NEO** | Micro-USB / Type-A OTG |
 | **`raspiducky-linux-arm64`** | ARM64 (64-bit) | • **RPi Zero 2 W** *(64-bit OS)*<br>• **RPi 4B / 5** *(USB-C)*<br>• **RPi 3A+** *(64-bit OS)*<br>• **RPi CM4 / CM5**<br>• **Orange Pi Zero 2/3/5**<br>• **NanoPi R2S/R4S/NEO3**<br>• **Radxa Rock Pi**<br>• **Pine64 Quartz64** | USB-C / Micro-USB |
-| **`raspiducky-linux-amd64`** | x86_64 (64-bit) | • **Standard PC / Intel NUC** *(Linux with USB OTG/UDC hardware or vUSB testing)* | USB-C OTG |
+| **`raspiducky-linux-amd64`** | x86_64 (64-bit) | • **Standard PC / Intel NUC** *(Linux with USB OTG/UDC hardware or `dummy_hcd` testing)* | USB-C OTG |
 
 ---
 
 ## 📜 Scripting Examples
 
-Raspiducky supports both standard DuckyScript and an advanced JavaScript API.
+Raspiducky supports both DuckyScript 1.0–3.0 and an ECMAScript 5.1+ JavaScript API.
 
 ### 🦆 DuckyScript Example (`hello.txt`)
 ```duckyscript
-REM Standard Rubber Ducky Payload
+REM Standard & DuckyScript 3.0 Block Payload
 DELAY 1000
 GUI r
 DELAY 500
-STRING notepad.exe
-ENTER
-DELAY 1000
-STRING Hello World from Raspiducky!
-ENTER
+STRINGLN notepad.exe
+DELAY 800
+STRINGLN
+Hello World from Raspiducky!
+Multi-line blocks and 60Hz console-safe newlines work out of the box.
+END_STRINGLN
 ```
 
 ### ⚡ JavaScript HIDScript Example (`hello.js`)
 ```javascript
-// Set keyboard layout to Spanish and speed
+// Set keyboard layout to Spanish and typing speed (15ms delay, 5ms jitter)
 layout("es");
-typingSpeed(20, 50);
+typingSpeed(15, 5);
 
 // Open Run dialog on Windows
 press("GUI R");
 delay(500);
 type("notepad.exe\n");
-delay(1000);
+delay(800);
 
-// Type text
-type("Hello from Raspiducky JS Engine!\n");
+// Type text with full Spanish keymap & dead-key support
+type("¡Hola desde el motor JS de Raspiducky!\n");
 
-// Wait for target user to hit NumLock key
-waitLED("NUM", 10000);
-type("NumLock was toggled on host!\n");
+// Wait up to 10s for target user to toggle NumLock
+var state = waitLED("NUM", 10000);
+log("NumLock active:", state.numLock);
 ```
 
 ---
 
 ## 🛠️ Advanced Usage & CLI
 
-While the web dashboard is the easiest and primary way to use Raspiducky, advanced or technical users can interact with the tool directly via the command line.
-
 ### Starting the Daemon Manually
-If you decided to build from source or did not use the automated install script, you must run `raspiducky` in daemon mode with root privileges (required to interact with `/sys/kernel/config/usb_gadget` and `/dev/hidg*`):
+If you built from source or did not use the automated installer, start `raspiducky` in daemon mode with root privileges:
 
 ```bash
-sudo ./raspiducky daemon -port :8000 -layout US
+sudo ./raspiducky daemon -port :8000 -storage /var/lib/raspiducky
 ```
-> *Note: The `-layout` flag sets the default keyboard layout (e.g., `US`, `ES`, `DE`, `FR`).*
+> *Optional flags: `-layout <US|ES|DE|FR>` overrides the saved keyboard layout; `-delay <ms>` overrides the saved inter-keystroke delay (e.g., `-delay 0` or `-delay 10`).*
 
-### Executing Scripts via CLI (Automation)
-You can execute a DuckyScript (`.txt`) or JavaScript (`.js`) file directly from the command line without using the web interface. 
-
-**This is especially useful for automation.** For example, you can schedule a script to run automatically when the system boots by adding it to the root user's `crontab`.
+### Executing Scripts via CLI (Headless & Boot Automation)
+Execute any DuckyScript (`.txt`, `.ducky`) or JavaScript (`.js`) file directly from the terminal or `crontab`:
 
 ```bash
-sudo ./raspiducky run payloads/hello_world.txt -layout ES
+sudo raspiducky run payloads/hello_world.txt -layout ES -delay 10
 ```
+
+When `raspiducky.service` is running, `raspiducky run` **automatically delegates execution to the active daemon** via `http://127.0.0.1:8000` (avoiding `/dev/hidg0` device contention and streaming logs to connected Web Dashboard clients), and seamlessly falls back to direct local HID execution when running standalone.
 
 ---
 
 ## 🏗️ Building from Source
 
+Requires **Go 1.26+** (`CGO_ENABLED=0`, zero external C dependencies).
+
 ### Native Build (On Target Device)
 ```bash
 git clone https://github.com/arrase/Raspiducky.git
 cd Raspiducky
-go build -o build/raspiducky ./cmd/raspiducky
+go build -ldflags="-s -w -X main.version=dev" -o build/raspiducky ./cmd/raspiducky
 ```
 
 ### Cross-Compiling for Specific Targets
 
 * **Raspberry Pi Zero / Zero W (ARMv6)**:
   ```bash
-  GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o build/raspiducky-linux-armv6 ./cmd/raspiducky
+  CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o build/raspiducky-linux-armv6 ./cmd/raspiducky
   ```
 * **Raspberry Pi 3A+ / Banana Pi M2 Zero / Orange Pi (ARMv7 32-bit)**:
   ```bash
-  GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o build/raspiducky-linux-armv7 ./cmd/raspiducky
+  CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o build/raspiducky-linux-armv7 ./cmd/raspiducky
   ```
 * **Raspberry Pi Zero 2 W / Pi 4 / Pi 5 / Orange Pi 5 / Radxa (ARM64 64-bit)**:
   ```bash
-  GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/raspiducky-linux-arm64 ./cmd/raspiducky
+  CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/raspiducky-linux-arm64 ./cmd/raspiducky
   ```
 
 ---
@@ -209,29 +214,29 @@ go build -o build/raspiducky ./cmd/raspiducky
 
 ```text
                                   +---------------------------------------+
-                                  |         Web Browser / REST / WS       |
+                                  |     Web Browser / REST / WS / CLI     |
                                   +-------------------+-------------------+
                                                       |
                                                       v
 +---------------------------------------------------------------------------------------------------+
-| Raspiducky (Single Executable)                                                                    |
+| Raspiducky (Single Go Executable)                                                                 |
 |                                                                                                   |
-|  +-------------------+   +--------------------+   +-----------------------+   +----------------+  |
-|  | Embedded Web UI   |   |   REST & WS API    |   |  Goja JS Engine &     |   | Storage        |  |
-|  | (go:embed)        |   |   (pkg/api)        |   |  DuckyScript Parser   |   | (pkg/storage)  |  |
-|  +-------------------+   +---------+----------+   +-----------+-----------+   +----------------+  |
-|                                    |                      |                                       |
-|                                    v                      v                                       |
-|                         +-----------------------------------+                                     |
-|                         |    HID & ConfigFS Controllers     |                                     |
-|                         |    (pkg/gadget, pkg/hid)          |                                     |
-|                         +-----------------+-----------------+                                     |
-+-------------------------------------------|-------------------------------------------------------+
-                                            |
-                                            v
-                      +-------------------------------------------+
-                      | Linux Kernel ConfigFS & /dev/hidgX        |
-                      +-------------------------------------------+
+|  +-------------------+   +-------------------------+   +---------------------------------------+  |
+|  | Embedded Web UI   |   | REST, WS & Persistence  |   | Direct DuckyScript Compiler &         |  |
+|  | (pkg/api/web)     |   | (pkg/api)               |   | Goja JS Engine (pkg/scripting)        |  |
+|  +-------------------+   +------------+------------+   +-------------------+-------------------+  |
+|                                       |                                    |                      |
+|                                       v                                    v                      |
+|                         +----------------------------------------------------+                    |
+|                         |       ConfigFS & HID Hardware Controllers          |                    |
+|                         |       (pkg/gadget, pkg/hid)                        |                    |
+|                         +-------------------------+--------------------------+                    |
++---------------------------------------------------|-----------------------------------------------+
+                                                    |
+                                                    v
+                              +-------------------------------------------+
+                              | Linux Kernel ConfigFS & /dev/hidgX        |
+                              +-------------------------------------------+
 ```
 
 ---
@@ -240,14 +245,15 @@ go build -o build/raspiducky ./cmd/raspiducky
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `/api/gadget` | `GET` | Retrieve active USB gadget configuration & state |
-| `/api/gadget` | `POST` | Update and deploy new USB gadget parameters |
-| `/api/scripts` | `GET` | List all saved script templates |
-| `/api/scripts` | `POST` | Save or update a script template |
-| `/api/scripts/{name}` | `DELETE` | Delete a script template |
-| `/api/run` | `POST` | Trigger script execution (JS or DuckyScript) |
-| `/api/stop` | `POST` | Stop active script execution |
-| `/api/ws` | `GET` | Real-time WebSocket connection for logs & status events |
+| `/api/gadget` | `GET` | Retrieve active USB gadget configuration, UDC, and endpoint usage |
+| `/api/gadget` | `POST` | Validate, save, and deploy USB gadget parameters |
+| `/api/scripts` | `GET` | List all saved payload scripts |
+| `/api/scripts` | `POST` | Save or update a payload script (`201 Created`) |
+| `/api/scripts/{name}` | `DELETE` | Delete a saved payload script (`204 No Content`) |
+| `/api/job` | `GET` | Retrieve current or last script execution job status |
+| `/api/run` | `POST` | Trigger script execution (with optional `layout` & `typingDelayMs` overrides) |
+| `/api/stop` | `POST` | Immediately interrupt active script execution and HID writes |
+| `/api/ws` | `GET` | Real-time WebSocket stream (`log`, `led_state`, `gadget_status`, `job_status`) |
 
 ---
 
