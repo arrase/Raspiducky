@@ -11,10 +11,11 @@ import (
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
-// Supported payload script types.
+// Supported payload script types and safety bounds.
 const (
 	TypeDuckyScript = "duckyscript"
 	TypeJavaScript  = "javascript"
+	maxRepeatCount  = 10000
 )
 
 // OpKind identifies the compiled DuckyScript instruction type.
@@ -240,15 +241,15 @@ func buildRepeatInstructions(lineNum int, arg string, prev *Instruction) ([]Inst
 		return nil, fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, strings.TrimSpace(arg))
 	}
 	count, err := strconv.Atoi(fields[0])
-	if err != nil || count <= 0 {
-		return nil, fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, fields[0])
+	if err != nil || count <= 0 || count > maxRepeatCount {
+		return nil, fmt.Errorf("line %d: invalid REPEAT count %q (must be 1..%d)", lineNum, fields[0], maxRepeatCount)
 	}
 
-	out := make([]Instruction, count)
-	for i := range count {
+	out := make([]Instruction, 0, min(count, 64))
+	for range count {
 		inst := *prev
 		inst.Line = lineNum
-		out[i] = inst
+		out = append(out, inst)
 	}
 	return out, nil
 }

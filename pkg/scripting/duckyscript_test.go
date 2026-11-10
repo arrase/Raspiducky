@@ -106,6 +106,7 @@ func TestCompileDuckyScript_Errors(t *testing.T) {
 		{"repeat missing count", "ENTER\nREPEAT", "line 2"},
 		{"repeat zero count", "ENTER\nrepeat 0", "line 2"},
 		{"repeat negative count", "ENTER\nREPEAT -3", "line 2"},
+		{"repeat exceeds max count", "ENTER\nREPEAT 10001", "line 2"},
 		{"repeat extra token", "ENTER\nREPEAT 2 ENTER", "line 2"},
 		{"mouse_move invalid x", "MOUSE_MOVE abc 10", "line 1"},
 		{"mouse_moveto missing y", "MOUSE_MOVETO 100", "line 1"},

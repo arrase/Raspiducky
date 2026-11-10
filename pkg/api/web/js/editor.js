@@ -271,12 +271,18 @@ function matchesLogFilter(level, source, filter) {
     return level === filter;
 }
 
+function resolveLogTagVariant(normLevel, normSource) {
+    if (normLevel === 'WARN' || normLevel === 'ERROR') {
+        return normLevel.toLowerCase();
+    }
+    return normSource === 'HID' ? 'hid' : 'info';
+}
+
 function createLogEntry(level, source, message) {
     const normLevel = String(level).toUpperCase();
     const normSource = String(source).toUpperCase();
     const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
-    const tagVariant = normLevel === 'WARN' || normLevel === 'ERROR' ? normLevel.toLowerCase()
-        : (normSource === 'HID' ? 'hid' : 'info');
+    const tagVariant = resolveLogTagVariant(normLevel, normSource);
 
     const entry = document.createElement('div');
     entry.className = `log-entry log-${normLevel.toLowerCase()}`;
@@ -426,9 +432,9 @@ function handleLibraryGridClick(event) {
     if (action === 'load') {
         loadScriptToEditor(name);
     } else if (action === 'run') {
-        quickRunScript(name);
+        void quickRunScript(name);
     } else if (action === 'delete') {
-        deleteScriptFromLibrary(name);
+        void deleteScriptFromLibrary(name);
     }
 }
 
@@ -465,7 +471,7 @@ async function saveCurrentScript() {
 
     try {
         const res = await apiCall('/api/scripts', 'POST', { name, type, content });
-        if (res && res.name) {
+        if (res?.name) {
             titleInput.value = res.name;
         }
         appendLog('INFO', 'LIBRARY', `Payload [${titleInput.value}] saved to library.`);

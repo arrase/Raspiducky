@@ -745,7 +745,7 @@ input:user-invalid {
     display: flex;
     gap: 10px;
     line-height: 1.4;
-    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .log-time {

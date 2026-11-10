@@ -153,7 +153,7 @@
                                 <div class="progress-bar-container">
                                     <div id="endpoint-progress" class="endpoint-progress"></div>
                                 </div>
-                                <div id="endpoint-warning" class="endpoint-warning" role="status" aria-live="polite"></div>
+                                <output id="endpoint-warning" class="endpoint-warning" aria-live="polite"></output>
                             </div>
                         </div>
                     </div>
@@ -278,14 +278,14 @@
                         </div>
                     </div>
 
-                    <div class="job-bar glass-panel hidden" id="job-status-bar" role="status" aria-live="polite">
-                        <div class="job-info">
+                    <output class="job-bar glass-panel hidden" id="job-status-bar" aria-live="polite">
+                        <span class="job-info">
                             <span class="job-status-pill running" id="job-status-pill">RUNNING</span>
                             <span class="job-id" id="job-id-display">Job ID: ---</span>
                             <span class="job-script-name" id="job-name-display">Script: ---</span>
-                        </div>
-                        <div class="job-timer" id="job-timer-display">Duration: 0.0s</div>
-                    </div>
+                        </span>
+                        <span class="job-timer" id="job-timer-display">Duration: 0.0s</span>
+                    </output>
 
                     <div class="editor-split">
                         <div class="editor-container glass-card">

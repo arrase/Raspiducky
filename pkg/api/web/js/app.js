@@ -114,7 +114,7 @@ function initWebSocket() {
             state.wsReconnectAttempts = 0;
             updateWSStatus('connected');
             appendLog('INFO', 'SYS', 'WebSocket connection established.');
-            syncJobStatus();
+            void syncJobStatus();
         };
 
         state.ws.onmessage = (event) => {

@@ -68,28 +68,31 @@ func (sm *ScriptManager) saveDescriptionsLocked(descriptions map[string]string) 
 	}
 }
 
+func parseCommentLine(trimmed string) (string, bool) {
+	if len(trimmed) >= 4 && strings.EqualFold(trimmed[:4], "REM ") {
+		return strings.TrimSpace(trimmed[4:]), true
+	}
+	for _, prefix := range []string{"//", "#"} {
+		if after, ok := strings.CutPrefix(trimmed, prefix); ok {
+			return strings.TrimSpace(after), true
+		}
+	}
+	return "", false
+}
+
 func extractDefaultDescription(content, scriptType string) string {
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		if strings.HasPrefix(strings.ToUpper(trimmed), "REM ") {
-			if desc := strings.TrimSpace(trimmed[4:]); desc != "" {
-				return desc
-			}
+		comment, isComment := parseCommentLine(trimmed)
+		if !isComment {
+			break
 		}
-		if strings.HasPrefix(trimmed, "//") {
-			if desc := strings.TrimSpace(strings.TrimPrefix(trimmed, "//")); desc != "" {
-				return desc
-			}
+		if comment != "" {
+			return comment
 		}
-		if strings.HasPrefix(trimmed, "#") {
-			if desc := strings.TrimSpace(strings.TrimPrefix(trimmed, "#")); desc != "" {
-				return desc
-			}
-		}
-		break
 	}
 	return fmt.Sprintf("Saved %s payload", scriptType)
 }

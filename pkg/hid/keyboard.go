@@ -243,30 +243,34 @@ func (kbd *Keyboard) heldKeyPresent(key uint8) (KeyboardReport, bool) {
 	return NewKeyboardReport(kbd.heldModifiers, removeKey(kbd.heldKeys, key)...), true
 }
 
+func splitComboWord(word string) []string {
+	if len(word) == 1 {
+		return []string{word}
+	}
+	var parts []string
+	start := 0
+	for i := 0; i < len(word); i++ {
+		if word[i] != '-' && word[i] != '+' {
+			continue
+		}
+		if i > start {
+			parts = append(parts, word[start:i])
+		} else if i == len(word)-1 {
+			parts = append(parts, word[i:])
+		}
+		start = i + 1
+	}
+	if start < len(word) {
+		parts = append(parts, word[start:])
+	}
+	return parts
+}
+
 // SplitComboTokens splits a key combo string by whitespace, '-' or '+', preserving standalone '-' and '+' tokens.
 func SplitComboTokens(comboStr string) []string {
 	var tokens []string
 	for _, word := range strings.Fields(comboStr) {
-		if len(word) == 1 {
-			tokens = append(tokens, word)
-			continue
-		}
-		start := 0
-		for i := 0; i < len(word); i++ {
-			if word[i] != '-' && word[i] != '+' {
-				continue
-			}
-			if i > start {
-				tokens = append(tokens, word[start:i])
-			}
-			if i == len(word)-1 && i == start {
-				tokens = append(tokens, word[i:])
-			}
-			start = i + 1
-		}
-		if start < len(word) {
-			tokens = append(tokens, word[start:])
-		}
+		tokens = append(tokens, splitComboWord(word)...)
 	}
 	return tokens
 }

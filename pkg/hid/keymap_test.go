@@ -32,25 +32,27 @@ func assertRuneMapping(t *testing.T, layoutName string, l *Layout, ch rune, want
 	}
 }
 
-func assertDeadKeyMapping(t *testing.T, layoutName string, l *Layout, ch rune, deadMod, deadKey, nextMod, nextKey uint8) {
+func assertDeadKeyMapping(t *testing.T, layoutName string, l *Layout, ch rune, first, second KeyCombo) {
 	t.Helper()
 	ks, ok := l.Runes[ch]
 	if !ok {
 		t.Fatalf("%s missing dead-key rune %q", layoutName, ch)
 	}
-	if ks.First.Modifiers != deadMod || ks.First.KeyCode != deadKey || ks.Second.Modifiers != nextMod || ks.Second.KeyCode != nextKey {
-		t.Errorf("%s %q dead-key mismatch: got %+v, want (%#x,%#x)->(%#x,%#x)",
-			layoutName, ch, ks, deadMod, deadKey, nextMod, nextKey)
+	if ks.First != first || ks.Second != second {
+		t.Errorf("%s %q dead-key mismatch: got %+v, want %+v -> %+v",
+			layoutName, ch, ks, first, second)
 	}
 }
 
 func TestLayoutMappings(t *testing.T) {
+	space := KeyCombo{KeyCode: KeySpace}
+
 	de, _ := GetLayout("DE")
 	assertRuneMapping(t, "DE", de, '?', ModLeftShift, KeyMinus)
 	assertRuneMapping(t, "DE", de, '&', ModLeftShift, Key6)
-	assertDeadKeyMapping(t, "DE", de, '^', 0, KeyGrave, 0, KeySpace)
-	assertDeadKeyMapping(t, "DE", de, '`', ModLeftShift, KeyEqual, 0, KeySpace)
-	assertDeadKeyMapping(t, "DE", de, 'é', 0, KeyEqual, 0, KeyE)
+	assertDeadKeyMapping(t, "DE", de, '^', KeyCombo{KeyCode: KeyGrave}, space)
+	assertDeadKeyMapping(t, "DE", de, '`', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyEqual}, space)
+	assertDeadKeyMapping(t, "DE", de, 'é', KeyCombo{KeyCode: KeyEqual}, KeyCombo{KeyCode: KeyE})
 
 	es, _ := GetLayout("ES")
 	esCases := []struct {
@@ -77,13 +79,13 @@ func TestLayoutMappings(t *testing.T) {
 	for _, tc := range esCases {
 		assertRuneMapping(t, "ES", es, tc.ch, tc.mod, tc.key)
 	}
-	assertDeadKeyMapping(t, "ES", es, '`', 0, KeyLeftBrace, 0, KeySpace)
-	assertDeadKeyMapping(t, "ES", es, '^', ModLeftShift, KeyLeftBrace, 0, KeySpace)
-	assertDeadKeyMapping(t, "ES", es, '´', 0, KeyApostrophe, 0, KeySpace)
-	assertDeadKeyMapping(t, "ES", es, '¨', ModLeftShift, KeyApostrophe, 0, KeySpace)
-	assertDeadKeyMapping(t, "ES", es, 'á', 0, KeyApostrophe, 0, KeyA)
-	assertDeadKeyMapping(t, "ES", es, 'Ó', 0, KeyApostrophe, ModLeftShift, KeyO)
-	assertDeadKeyMapping(t, "ES", es, 'ü', ModLeftShift, KeyApostrophe, 0, KeyU)
+	assertDeadKeyMapping(t, "ES", es, '`', KeyCombo{KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "ES", es, '^', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "ES", es, '´', KeyCombo{KeyCode: KeyApostrophe}, space)
+	assertDeadKeyMapping(t, "ES", es, '¨', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyApostrophe}, space)
+	assertDeadKeyMapping(t, "ES", es, 'á', KeyCombo{KeyCode: KeyApostrophe}, KeyCombo{KeyCode: KeyA})
+	assertDeadKeyMapping(t, "ES", es, 'Ó', KeyCombo{KeyCode: KeyApostrophe}, KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyO})
+	assertDeadKeyMapping(t, "ES", es, 'ü', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyApostrophe}, KeyCombo{KeyCode: KeyU})
 
 	fr, _ := GetLayout("FR")
 	frCases := []struct {
@@ -99,50 +101,39 @@ func TestLayoutMappings(t *testing.T) {
 	for _, tc := range frCases {
 		assertRuneMapping(t, "FR", fr, tc.ch, tc.mod, tc.key)
 	}
-	assertDeadKeyMapping(t, "FR", fr, '^', 0, KeyLeftBrace, 0, KeySpace)
-	assertDeadKeyMapping(t, "FR", fr, '¨', ModLeftShift, KeyLeftBrace, 0, KeySpace)
-	assertDeadKeyMapping(t, "FR", fr, '~', ModRightAlt, Key2, 0, KeySpace)
-	assertDeadKeyMapping(t, "FR", fr, '`', ModRightAlt, Key7, 0, KeySpace)
-	assertDeadKeyMapping(t, "FR", fr, 'ê', 0, KeyLeftBrace, 0, KeyE)
+	assertDeadKeyMapping(t, "FR", fr, '^', KeyCombo{KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "FR", fr, '¨', KeyCombo{Modifiers: ModLeftShift, KeyCode: KeyLeftBrace}, space)
+	assertDeadKeyMapping(t, "FR", fr, '~', KeyCombo{Modifiers: ModRightAlt, KeyCode: Key2}, space)
+	assertDeadKeyMapping(t, "FR", fr, '`', KeyCombo{Modifiers: ModRightAlt, KeyCode: Key7}, space)
+	assertDeadKeyMapping(t, "FR", fr, 'ê', KeyCombo{KeyCode: KeyLeftBrace}, KeyCombo{KeyCode: KeyE})
 }
 
 func TestMapKeyName(t *testing.T) {
+	cases := []struct {
+		layout string
+		token  string
+		want   KeyCombo
+	}{
+		{"ES", "CTRL", KeyCombo{Modifiers: ModLeftCtrl}},
+		{"ES", "WIN", KeyCombo{Modifiers: ModLeftGUI}},
+		{"ES", "BKSP", KeyCombo{KeyCode: KeyBackspace}},
+		{"ES", "A", KeyCombo{KeyCode: KeyA}},
+		{"ES", "ñ", KeyCombo{KeyCode: KeySemicolon}},
+		{"ES", "Ñ", KeyCombo{KeyCode: KeySemicolon}},
+		{"DE", "ß", KeyCombo{KeyCode: KeyMinus}},
+		{"FR", "1", KeyCombo{KeyCode: Key1}},
+		{"ES", "/", KeyCombo{KeyCode: Key7}},
+	}
+
+	for _, tc := range cases {
+		l, _ := GetLayout(tc.layout)
+		combo, ok := l.MapKeyName(tc.token)
+		if !ok || combo != tc.want {
+			t.Errorf("%s MapKeyName(%q) = (%+v, %v), want (%+v, true)", tc.layout, tc.token, combo, ok, tc.want)
+		}
+	}
+
 	es, _ := GetLayout("ES")
-
-	if combo, ok := es.MapKeyName("CTRL"); !ok || combo.Modifiers != ModLeftCtrl || combo.KeyCode != 0 {
-		t.Errorf("MapKeyName(CTRL) failed: %+v, ok=%v", combo, ok)
-	}
-	if combo, ok := es.MapKeyName("WIN"); !ok || combo.Modifiers != ModLeftGUI || combo.KeyCode != 0 {
-		t.Errorf("MapKeyName(WIN) failed: %+v, ok=%v", combo, ok)
-	}
-	if combo, ok := es.MapKeyName("BKSP"); !ok || combo.KeyCode != KeyBackspace {
-		t.Errorf("MapKeyName(BKSP) failed: %+v, ok=%v", combo, ok)
-	}
-
-	if combo, ok := es.MapKeyName("A"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeyA {
-		t.Errorf("MapKeyName(A) failed: %+v, ok=%v", combo, ok)
-	}
-
-	if combo, ok := es.MapKeyName("ñ"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeySemicolon {
-		t.Errorf("MapKeyName(ñ) failed: %+v, ok=%v", combo, ok)
-	}
-	if combo, ok := es.MapKeyName("Ñ"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeySemicolon {
-		t.Errorf("MapKeyName(Ñ) failed: %+v, ok=%v", combo, ok)
-	}
-
-	de, _ := GetLayout("DE")
-	if combo, ok := de.MapKeyName("ß"); !ok || combo.Modifiers != 0 || combo.KeyCode != KeyMinus {
-		t.Errorf("MapKeyName(ß) failed: %+v, ok=%v", combo, ok)
-	}
-
-	fr, _ := GetLayout("FR")
-	if combo, ok := fr.MapKeyName("1"); !ok || combo.Modifiers != 0 || combo.KeyCode != Key1 {
-		t.Errorf("FR MapKeyName(1) should not inject Shift: %+v, ok=%v", combo, ok)
-	}
-	if combo, ok := es.MapKeyName("/"); !ok || combo.Modifiers != 0 || combo.KeyCode != Key7 {
-		t.Errorf("ES MapKeyName(/) should not inject Shift: %+v, ok=%v", combo, ok)
-	}
-
 	if _, ok := es.MapKeyName("NONEXISTENT_KEY"); ok {
 		t.Error("Expected false for unknown key name")
 	}

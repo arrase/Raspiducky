@@ -577,6 +577,12 @@ func TestServer_HTTPHandlersAndFailedJob(t *testing.T) {
 	if badDuckyResp.StatusCode != http.StatusBadRequest {
 		t.Errorf("Expected 400 Bad Request for invalid DuckyScript, got %d", badDuckyResp.StatusCode)
 	}
+}
+
+func TestServer_CSRFAndSecurityHeaders(t *testing.T) {
+	server := setupTestServer(t, nil)
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
 
 	// Verify cross-origin CSRF requests to mutating endpoints and WebSocket are rejected (403 Forbidden)
 	csrfReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/run", strings.NewReader(`{"type":"duckyscript","script":"ENTER"}`))
