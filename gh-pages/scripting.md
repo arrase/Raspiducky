@@ -1,6 +1,6 @@
 # DuckyScript & JavaScript Engines
 
-Raspiducky features a dual scripting engine architecture that supports both traditional DuckyScript `.txt` payloads and advanced ECMAScript 5.1+ JavaScript `.js` scripts with native USB HID hardware bindings.
+Raspiducky features a dual scripting runtime supporting both **DuckyScript 1.0–3.0** (`.txt` / `.ducky`) via a direct line-validating compiler and **ECMAScript 5.1+ JavaScript** (`.js`) via an embedded [Goja](https://github.com/dop251/goja) VM.
 
 ---
 
@@ -15,120 +15,131 @@ Raspiducky features a dual scripting engine architecture that supports both trad
                        |                                             |
                        v                                             v
        +-------------------------------+             +-------------------------------+
-       |   DuckyScript Parser (.txt)   |             |   Goja JS Engine (.js)        |
-       |   Transpiles DuckyScript to   |             |   Pure Go ECMAScript 5.1+     |
-       |   JavaScript AST              |             |   Runtime Environment         |
+       |  Direct DuckyScript Compiler  |             |   Goja JS Engine (.js)        |
+       |  Validates & Compiles to      |             |   Pure Go ECMAScript 5.1+     |
+       |  Native []Instruction Opcodes |             |   Runtime + vm.Interrupt()    |
        +---------------+---------------+             +---------------+---------------+
                        |                                             |
                        +----------------------+----------------------+
                                               |
                                               v
                                +-----------------------------+
-                               | Native USB HID Bindings     |
-                               | (Keyboard, Mouse, LED)      |
+                               |  Bounded USB HID Layer      |
+                               |  (Keyboard, Mouse, LED)     |
                                +-----------------------------+
 ```
 
+!!! tip "Guaranteed Cleanup & Instant Stop"
+    Whether a script finishes normally, encounters a runtime error, or is aborted mid-run via `POST /api/stop` or `Ctrl+C`, `ScriptEngine` immediately interrupts in-flight sleeps, Goja loops (`vm.Interrupt`), and `/dev/hidg*` writes, then automatically releases any held keyboard keys and mouse buttons.
+
 ---
 
-## 🦆 1. DuckyScript Parser (`.txt`)
+## 🦆 1. Direct DuckyScript Compiler (`.txt` / `.ducky`)
 
-Raspiducky natively parses and executes standard Hak5 Rubber Ducky v1 syntax. When a `.txt` file is selected, the parser converts DuckyScript commands into JavaScript code line-by-line before passing it to the execution engine.
+Unlike brittle text transpilers, `CompileDuckyScript` (`pkg/scripting/duckyscript.go`) validates every command, argument, and key combo against the active keyboard layout **at compile time** before sending any USB traffic. Syntax or key errors report exact `line N:` diagnostics immediately.
 
 ### Supported Commands
 
 | Command | Example | Description |
 | :--- | :--- | :--- |
-| `REM` | `REM This is a comment` | Comment line (ignored during execution). |
-| `DEFAULT_DELAY` / `DEFAULTDELAY` | `DEFAULTDELAY 100` | Sets default delay in milliseconds applied between every subsequent command. |
+| `REM` / `#` / `//` | `REM Comment` | Single-line comment (ignored). |
+| `REM_BLOCK` … `END_REM` | `REM_BLOCK` | Multi-line DuckyScript 3.0 comment block. |
+| `ATTACKMODE` | `ATTACKMODE HID` | Accepted for DuckyScript 3.0 payload compatibility (no-op; configure composite functions via Dashboard/API). |
+| `DEFAULT_DELAY` / `DEFAULTDELAY` | `DEFAULT_DELAY 50` | Default post-instruction delay (ms) appended after subsequent repeatable commands. |
 | `DELAY` | `DELAY 500` | Pauses execution for the specified milliseconds. |
-| `TYPING_SPEED` | `TYPING_SPEED 20 5` | Sets inter-keystroke delay and optional random jitter in milliseconds. |
-| `STRING` | `STRING powershell.exe` | Types out text string using active keyboard layout. |
-| `STRINGLN` | `STRINGLN whoami` | Types out text string followed immediately by an `ENTER` keystroke. |
-| `ENTER` | `ENTER` | Presses the Enter / Return key. |
-| `GUI` / `WINDOWS` | `GUI r` or `GUI` | Presses Windows/Super key or key combo with GUI modifier. |
-| `CTRL` / `CONTROL` | `CTRL c` or `CTRL ALT DELETE` | Key combo with Control modifier. |
-| `ALT` | `ALT F4` | Key combo with Alt modifier. |
+| `REPEAT` | `REPEAT 5` | Repeats the preceding repeatable instruction `N` times. |
+| `LAYOUT` | `LAYOUT ES` | Switches keyboard translation layout (`US`, `ES`, `DE`, `FR`) dynamically mid-script. |
+| `TYPING_SPEED` / `STRINGDELAY` / `STRING_DELAY` | `TYPING_SPEED 10 5` | Sets inter-keystroke delay (`ms`) and optional random jitter (`ms`). Use `0` for max raw speed. |
+| `STRING` | `STRING whoami` | Types inline text using the active keyboard layout. |
+| `STRING` … `END_STRING` | *(Multi-line block)* | Types multi-line text verbatim (preserving indentation and internal newlines) without trailing `ENTER`. |
+| `STRINGLN` | `STRINGLN whoami` | Types inline text followed by `ENTER`. |
+| `STRINGLN` … `END_STRINGLN` | *(Multi-line block)* | Types multi-line text verbatim followed by a final `ENTER` (also accepts `END_STRING`). |
+| `ENTER` | `ENTER` | Presses Return / Enter. |
+| `GUI` / `WINDOWS` / `COMMAND` | `GUI r` or `GUI` | Presses Super/Windows/Command alone or as a modifier combo. |
+| `CTRL` / `CONTROL` | `CTRL SHIFT ESC` | Key combo with Control modifier. |
+| `ALT` / `ALTGR` | `ALT F4` | Key combo with Alt or AltGr modifier. |
 | `SHIFT` | `SHIFT TAB` | Key combo with Shift modifier. |
-| `MENU` / `APP` | `MENU` | Opens context menu (Shift + F10 or App key). |
-| `TAB`, `ESCAPE`, `SPACE` | `TAB` | Standard navigation keys. |
-| `UP`, `DOWN`, `LEFT`, `RIGHT` | `UPARROW` | Arrow navigation keys. |
-| `HOLD` | `HOLD SHIFT` or `HOLD DOWNARROW` | Holds down the specified key(s) until released. |
-| `RELEASE` | `RELEASE SHIFT` or `RELEASE DOWNARROW` | Releases previously held key(s). |
+| `MENU` / `APP` | `MENU` | Context menu / Application key. |
+| Navigation & Editing Keys | `TAB`, `ESCAPE`, `SPACE`, `BACKSPACE`, `DELETE`, `INSERT`, `HOME`, `END`, `PAGEUP`, `PAGEDOWN`, `UP` / `UPARROW`, `DOWN` / `DOWNARROW`, `LEFT` / `LEFTARROW`, `RIGHT` / `RIGHTARROW` | Standard navigation and editing keys. |
+| Function & Lock Keys | `F1`–`F12`, `CAPSLOCK`, `NUMLOCK`, `SCROLLLOCK`, `PRINTSCREEN`, `PAUSE` / `BREAK` | Function and lock toggle keys. |
+| `HOLD` | `HOLD SHIFT` | Holds down one or more keys without releasing until `RELEASE` or script exit. |
+| `RELEASE` | `RELEASE SHIFT` | Releases previously held key(s). |
+| `MOUSE_MOVE` | `MOUSE_MOVE 400 -150` | Relative mouse move (automatically splits deltas `> ±127` across multiple HID reports). |
+| `MOUSE_MOVE_ABS` / `MOUSE_MOVETO` | `MOUSE_MOVETO 16384 16384` | Moves cursor to normalized 15-bit screen coordinates (`0..32767`). |
+| `MOUSE_CLICK` | `MOUSE_CLICK left` | Clicks `left` (default), `right`, or `middle` mouse button. |
+| `WAIT_LED` | `WAIT_LED NUM 10000` | Waits for a host LED change (`ANY`, `NUM`, `CAPS`, `SCROLL`) with optional timeout in ms (default `5000`). |
 
-### DuckyScript Example
+### DuckyScript Example (with Multi-Line Blocks & Host Sync)
 
 ```duckyscript
-REM Automated Windows CMD Execution
-DEFAULT_DELAY 100
-DELAY 1000
+REM Wait up to 15s for host user to toggle CapsLock, then type multi-line script
+LAYOUT US
+TYPING_SPEED 10 0
+WAIT_LED CAPS 15000
+
 GUI r
 DELAY 500
-STRING cmd.exe
-ENTER
-DELAY 1000
-STRING echo Hello from Raspiducky!
-ENTER
+STRINGLN notepad.exe
+DELAY 800
+
+STRINGLN
+Hello from Raspiducky!
+Multi-line DuckyScript 3.0 blocks preserve newlines cleanly.
+END_STRINGLN
 ```
+
+---
+
+## ⏱️ Typing Speed & 60Hz Host Compatibility
+
+Raspiducky decouples physical key hold duration from inter-keystroke pacing so typing stays both fast and reliable across desktop OSes and frame-sampled console hosts (such as 60Hz game consoles):
+
+* **Default Pacing (`10ms` delay)**: Uses a crisp `5–20ms` key hold plus `10ms` inter-key gap, and applies a dedicated `20ms` `KeyEnter` hold + `25ms` post-newline settle so editors on 60Hz hosts never drop newlines or swallow the first character of the next line.
+* **Maximum Raw Speed (`0ms` delay)**: Uses a minimal `2ms` key hold with zero inter-key sleep for maximum burst throughput on standard PCs.
+* **CRLF & Unicode Resilience**: `\r\n` line endings are normalized to `\n`, typographic quotes/dashes/non-breaking spaces are mapped cleanly, dead keys (`^`, `` ` ``, `´`, `~`) emit `dead-key + Space` automatically, and unsupported control/format characters are skipped rather than aborting the payload.
 
 ---
 
 ## ⚡ 2. JavaScript HIDScript Engine (`.js`)
 
-Powered by [Goja](https://github.com/dop251/goja) (a pure Go ECMAScript 5.1+ implementation), the JS engine gives payload developers full programmatic control: variables, loops, conditional logic, functions, try/catch blocks, and asynchronous LED event synchronization.
-
----
-
-## 📖 JavaScript API Reference
-
-The JS execution context exposes the following native functions:
+Powered by [Goja](https://github.com/dop251/goja), the JavaScript engine provides full programmatic control: variables, loops, conditionals, functions, `try`/`catch` error handling, and interactive host LED synchronization.
 
 ### Keyboard Functions
 
 #### `type(text: string): void`
-Types out the provided string character by character according to the currently active keyboard layout.
+Types the provided string character by character using the active keyboard layout.
 ```javascript
 type("Hello World!\n");
 ```
 
 #### `press(keys: string): void`
-Simulates pressing a key combination. Key tokens are separated by spaces.
+Presses and releases a single key or space-separated modifier combination.
 ```javascript
 press("GUI R");
 press("CTRL ALT DELETE");
 press("SHIFT TAB");
 ```
 
-#### `hold(keys: string): void`
-Holds down one or more keys without releasing them until `release()` is called or the script finishes.
+#### `hold(keys: string): void` & `release(keys: string): void`
+Depresses or releases one or more keys across subsequent operations. Any keys still held when the script ends are released automatically.
 ```javascript
 hold("SHIFT");
 press("DOWNARROW");
 release("SHIFT");
 ```
 
-#### `release(keys: string): void`
-Releases one or more previously held keys.
+#### `layout(name: string): void`
+Changes the active keyboard translation table (`"us"`, `"es"`, `"de"`, `"fr"`).
 ```javascript
-hold("CTRL SHIFT");
-delay(500);
-release("CTRL SHIFT");
+layout("es");
+type("¿Hola, cómo estás?\n");
 ```
 
-#### `layout(lang: string): void`
-Changes the active keyboard translation table.
-* **Supported values**: `"us"`, `"es"`, `"de"`, `"fr"`.
+#### `typingSpeed(delayMs: number, jitterMs?: number): void`
+Sets the inter-keystroke delay (`>= 0`) and optional random jitter in milliseconds.
 ```javascript
-layout("es"); // Switch to Spanish layout
-type("¿Hola, cómo estás?");
-```
-
-#### `typingSpeed(delayMs: number, jitterMs: number): void`
-Sets the inter-keystroke delay and optional random jitter (in milliseconds) to simulate human typing patterns.
-```javascript
-// 30ms delay per key with up to 15ms random jitter
-typingSpeed(30, 15);
-type("Typing like a human...");
+typingSpeed(0, 0);   // Maximum raw burst speed
+typingSpeed(20, 10); // Human-like pacing (20ms + 0..10ms jitter)
 ```
 
 ---
@@ -136,16 +147,16 @@ type("Typing like a human...");
 ### Timing & Logging Functions
 
 #### `delay(ms: number): void`
-Pauses script execution for the specified number of milliseconds.
+Pauses execution for `ms` milliseconds (instantly interruptible on `Stop`).
 ```javascript
-delay(1000); // Pause for 1 second
+delay(1000);
 ```
 
 #### `log(...args: any[]): void` / `console.log(...args: any[]): void`
-Writes log messages to the execution console and streams them via WebSocket to the Web Dashboard.
+Streams log lines in real time to CLI stdout and connected WebSocket dashboard clients (`console.warn` and `console.error` are also bound).
 ```javascript
-log("Executing payload stage 2...");
-console.log("Current step completed successfully.");
+log("Stage 1 complete");
+console.log("Target layout:", "ES");
 ```
 
 ---
@@ -153,23 +164,21 @@ console.log("Current step completed successfully.");
 ### Mouse Functions
 
 #### `mouseMove(dx: number, dy: number): void`
-Moves the mouse pointer by relative X and Y offsets (range: `-127` to `127`).
+Moves the mouse pointer by relative `dx`, `dy` pixels. Displacements outside `-127..127` are automatically split into sequential HID reports.
 ```javascript
-mouseMove(50, -20); // Move 50px right, 20px up
+mouseMove(350, -120);
 ```
 
 #### `mouseMoveTo(x: number, y: number): void`
-Moves the mouse pointer to absolute screen coordinates (range: `0` to `32767`).
+Moves the cursor to absolute normalized coordinates (`0` to `32767` on X and Y).
 ```javascript
-mouseMoveTo(16384, 16384); // Move to center of screen
+mouseMoveTo(16384, 16384); // Center of screen
 ```
 
-#### `mouseClick(button: string): void`
-Triggers a mouse button click.
-* **Supported values**: `"left"`, `"right"`, `"middle"`.
+#### `mouseClick(button?: string): void`
+Clicks `"left"` (default), `"right"`, or `"middle"`.
 ```javascript
 mouseClick("left");
-delay(100);
 mouseClick("right");
 ```
 
@@ -177,27 +186,23 @@ mouseClick("right");
 
 ### Host Synchronization & LED Listener
 
-#### `waitLED(filter: string, timeoutMs: number): LEDState`
-Blocks execution until the target host sends a keyboard LED state update over `/dev/hidg0` matching the specified filter mask, or until the timeout expires.
+#### `waitLED(filter?: string, timeoutMs?: number): LEDState`
+Blocks until the host sends a keyboard LED report matching `filter`, or throws on timeout.
 
-* **Filter Values**: `"NUM"` / `"NUMLOCK"`, `"CAPS"` / `"CAPSLOCK"`, `"SCROLL"` / `"SCROLLLOCK"`, `"ANY"`.
-* **Timeout**: Milliseconds (default: `5000` ms).
-* **Return Value**: `LEDState` object `{ numLock: boolean, capsLock: boolean, scrollLock: boolean }`.
+* **Filter**: `"ANY"` (default), `"NUM"` / `"NUMLOCK"`, `"CAPS"` / `"CAPSLOCK"`, `"SCROLL"` / `"SCROLLLOCK"`.
+* **Timeout**: Milliseconds (default `5000`).
+* **Returns**: `{ numLock: boolean, capsLock: boolean, scrollLock: boolean }`.
 
 ```javascript
-log("Waiting for host user to press NumLock key...");
-
+log("Waiting up to 15s for NumLock toggle on host...");
 try {
-  // Wait up to 15 seconds for NumLock toggle
   var state = waitLED("NUM", 15000);
-  log("NumLock toggled! NumLock active: " + state.numLock);
-  
-  // Trigger secondary stage payload
+  log("NumLock is now:", state.numLock);
   press("GUI R");
   delay(300);
   type("calc.exe\n");
 } catch (err) {
-  log("Timeout waiting for LED event: " + err);
+  log("Timed out waiting for LED:", err);
 }
 ```
 
@@ -205,11 +210,10 @@ try {
 
 ## 💡 Host LED Listener Technical Operation
 
-When a target host receives keystrokes like `NumLock`, `CapsLock`, or `ScrollLock`, the host operating system sends a USB Output Report back to `/dev/hidg0` to switch the physical keyboard's indicator LEDs.
+When a host toggles `NumLock`, `CapsLock`, or `ScrollLock`, the host OS sends a 1-byte HID `SET_REPORT` output transfer over `EP0` (`no_out_endpoint=1`), which the kernel `f_hid` driver delivers to `/dev/hidg0`:
 
-Raspiducky's `LEDWatcher` (`pkg/hid/led.go`) continuously monitors `/dev/hidg0` via non-blocking read operations:
-1. **Host Output Report Byte Structure**:
+1. **Output Report Bitmask**:
    - Bit 0 (`0x01`): `Num Lock`
    - Bit 1 (`0x02`): `Caps Lock`
    - Bit 2 (`0x04`): `Scroll Lock`
-2. **Event Dispatching**: When a matching bit change occurs, `LEDWatcher` broadcasts the updated state to active subscribers (`waitLED()` listeners in JavaScript and real-time WebSocket clients).
+2. **Event Fan-Out**: `LEDWatcher` (`pkg/hid/led.go`) polls `/dev/hidg0` and broadcasts state transitions to active `waitLED()` / `WAIT_LED` callers and connected WebSocket clients.

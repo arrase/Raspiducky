@@ -1,122 +1,108 @@
 # 📥 Installation & Build Guide
 
-This guide covers system prerequisites, automated installation, manual pre-compiled binary deployment, and building Raspiducky from source (including cross-compilation for ARM target hardware).
+This guide covers system prerequisites, one-line automated installation, manual binary deployment, and building or cross-compiling Raspiducky from source.
 
 ---
 
 ## 📋 System Requirements
 
-To run Raspiducky in USB Gadget mode, your target hardware and operating system must meet the following criteria:
-
-* **Operating System**: Linux with kernel 4.19 or higher (Raspberry Pi OS Lite recommended).
-* **Kernel Drivers**: USB Gadget ConfigFS support (`libcomposite` kernel module) and low-level USB controller driver (`dwc2`, `dwc3`, or `sunxi-musb`).
-* **Root Privileges**: `root` access is required to interact with `/sys/kernel/config/usb_gadget` and `/dev/hidg*` HID character devices.
-* **DebugFS**: `/sys/kernel/debug` mounted for hardware endpoint limit detection.
+* **Operating System**: Linux with kernel 4.19+ (Raspberry Pi OS Lite recommended).
+* **Kernel Modules**: USB Gadget ConfigFS (`libcomposite`) and a peripheral-capable UDC driver (`dwc2`, `dwc3`, or `sunxi-musb`).
+* **Root Privileges**: `root` access is required to configure `/sys/kernel/config/usb_gadget` and open `/dev/hidg*` character devices.
+* **DebugFS**: `/sys/kernel/debug` mounted so Raspiducky can query hardware endpoint limits (`hw_params`).
 
 ---
 
 ## ⚡ Option 1: Automated One-Line Installation (Recommended)
 
-The automated installation script detects target architecture, downloads the latest binary release, configures kernel overlays, creates udev rules, and installs a systemd background service.
-
-Run this single command on your Raspberry Pi:
+Run the official installer on your Raspberry Pi or compatible Linux SBC:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/arrase/Raspiducky/master/install.sh | sudo sh
 ```
 
-### What the Installation Script Performs
+### What `install.sh` Performs
 
-1. Detects system architecture (`armv6l`, `armv7l`, `aarch64`, or `x86_64`).
-2. Downloads the matching pre-compiled release binary to `/usr/local/bin/raspiducky`.
-3. Appends `dtoverlay=dwc2,dr_mode=peripheral` to `/boot/config.txt` or `/boot/firmware/config.txt`.
-4. Ensures `dwc2` and `libcomposite` are loaded in `/etc/modules`.
-5. Configures `/etc/fstab` to persist `/sys/kernel/debug` mount.
-6. Installs `/etc/udev/rules.d/99-raspiducky-hid.rules` for `/dev/hidg*` device access.
-7. Enables and starts the `raspiducky.service` background daemon.
+1. Detects CPU architecture (`armv6l`, `armv7l`, `aarch64`, or `x86_64`).
+2. Downloads the latest release binary into an isolated `mktemp -d` staging directory and installs it to `/usr/local/bin/raspiducky`.
+3. Disables conflicting host-only boot settings (`otg_mode=1` and `dtoverlay=dwc2,dr_mode=host`) and adds `dtoverlay=dwc2,dr_mode=peripheral` under `[all]` in `/boot/firmware/config.txt` (or `/boot/config.txt`).
+4. Registers `dwc2` and `libcomposite` in `/etc/modules` and loads them via `modprobe`.
+5. Persists `debugfs` (`/sys/kernel/debug`) in `/etc/fstab` and mounts it immediately.
+6. Installs `/etc/udev/rules.d/99-raspiducky-hid.rules` (`MODE="0660"`) for `/dev/hidg*`.
+7. Creates `/var/lib/raspiducky` and enables `raspiducky.service` (ordered after `sys-kernel-config.mount` and `sys-kernel-debug.mount`, preserving saved layout and gadget profiles across updates).
 
-> [!NOTE]
-> If installing for the first time on a fresh Raspberry Pi OS image, a **system reboot** is required to activate the kernel `dwc2` overlay:
-> ```bash
-> sudo reboot
-> ```
+!!! note "First-Time Reboot"
+    When installing on a fresh Raspberry Pi OS image where `dtoverlay=dwc2,dr_mode=peripheral` was newly added to `config.txt`, reboot once to activate the USB peripheral controller:
+    ```bash
+    sudo reboot
+    ```
 
 ---
 
-## 📦 Option 2: Pre-Compiled Binary Release Download
+## 📦 Option 2: Manual Pre-Compiled Binary Deployment
 
-If you prefer to install manually without the automated script, download the pre-compiled binary matching your CPU architecture from the GitHub Releases page:
+Download the binary matching your board's architecture from [GitHub Releases](https://github.com/arrase/Raspiducky/releases/latest):
 
 ```bash
-# 1. Download target binary (Example: Raspberry Pi Zero / ARMv6)
-curl -fsSL -o raspiducky https://github.com/arrase/Raspiducky/releases/latest/download/raspiducky-linux-armv6
+# 1. Download target binary (Example: Raspberry Pi 4 / Zero 2 W 64-bit)
+curl -fsSL -o raspiducky https://github.com/arrase/Raspiducky/releases/latest/download/raspiducky-linux-arm64
 
-# 2. Grant executable permissions
+# 2. Install executable
 chmod +x raspiducky
-
-# 3. Move binary to system path
 sudo mv raspiducky /usr/local/bin/raspiducky
 
-# 4. Prepare storage directory
+# 3. Create persistent storage directory & load kernel modules
 sudo mkdir -p /var/lib/raspiducky
-
-# 5. Enable kernel modules manually
 sudo modprobe dwc2
 sudo modprobe libcomposite
 
-# 6. Run daemon
-sudo /usr/local/bin/raspiducky daemon -port :8000 -storage /var/lib/raspiducky -layout US
+# 4. Run daemon
+sudo /usr/local/bin/raspiducky daemon -port :8000 -storage /var/lib/raspiducky
 ```
 
 ---
 
 ## 🏗️ Option 3: Building from Source
 
-Raspiducky is written in pure Go (ECMAScript engine and USB ConfigFS integration require zero CGO dependencies).
+Raspiducky is written in pure Go (`CGO_ENABLED=0`) with zero external C dependencies.
 
 ### Prerequisites
 
-* Go 1.22 or higher installed on your build machine (`go version`).
-* Git installed (`git`).
+* **Go 1.26+** (`go version`)
+* **Git** (`git`)
 
-### Native Build (On Target Device)
-
-To build directly on your Raspberry Pi:
+### Native Build
 
 ```bash
-# Clone project repository
 git clone https://github.com/arrase/Raspiducky.git
 cd Raspiducky
 
-# Compile binary
-go build -ldflags="-s -w" -o build/raspiducky ./cmd/raspiducky
-
-# Verify binary execution
-sudo ./build/raspiducky version
+go build -ldflags="-s -w -X main.version=dev" -o build/raspiducky ./cmd/raspiducky
+./build/raspiducky version
 ```
 
 ---
 
 ## 🔀 Cross-Compilation Commands
 
-You can cross-compile Raspiducky from any standard PC (x86_64 / macOS / Linux) for any supported ARM target board without needing external C toolchains (`CGO_ENABLED=0`).
+Cross-compile static Linux binaries from any workstation (Linux, macOS, or Windows) without C cross-toolchains:
 
-### 1. Raspberry Pi Zero / Zero W (ARMv6 32-bit)
+### 1. Raspberry Pi Zero / Zero W / A+ (ARMv6 32-bit)
 ```bash
-GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/raspiducky-linux-armv6 ./cmd/raspiducky
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w -X main.version=v2.5.0" -o build/raspiducky-linux-armv6 ./cmd/raspiducky
 ```
 
 ### 2. Raspberry Pi 3A+ / Banana Pi / Orange Pi (ARMv7 32-bit)
 ```bash
-GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/raspiducky-linux-armv7 ./cmd/raspiducky
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w -X main.version=v2.5.0" -o build/raspiducky-linux-armv7 ./cmd/raspiducky
 ```
 
 ### 3. Raspberry Pi Zero 2 W / Pi 4 / Pi 5 / Rock Pi (ARM64 64-bit)
 ```bash
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/raspiducky-linux-arm64 ./cmd/raspiducky
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version=v2.5.0" -o build/raspiducky-linux-arm64 ./cmd/raspiducky
 ```
 
 ### 4. Standard PC / Intel NUC (x86_64 64-bit)
 ```bash
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/raspiducky-linux-amd64 ./cmd/raspiducky
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=v2.5.0" -o build/raspiducky-linux-amd64 ./cmd/raspiducky
 ```
