@@ -37,7 +37,7 @@ func NewGadgetManager(hub *Hub, runner *RunnerEngine, opts ServerOptions) *Gadge
 	}
 
 	devDir := "/dev"
-	if opts.Keyboard.DevicePath() != "" {
+	if opts.Keyboard != nil && opts.Keyboard.DevicePath() != "" {
 		devDir = filepath.Dir(opts.Keyboard.DevicePath())
 	}
 
@@ -76,8 +76,17 @@ func NewGadgetManager(hub *Hub, runner *RunnerEngine, opts ServerOptions) *Gadge
 	if opts.KeyboardLayout != "" {
 		initialCfg.KeyboardLayout = opts.KeyboardLayout
 	}
-	if opts.TypingDelayMs > 0 {
-		initialCfg.TypingDelayMs = opts.TypingDelayMs
+	if opts.TypingDelayMs != nil {
+		initialCfg.TypingDelayMs = *opts.TypingDelayMs
+	}
+	if initialCfg.TypingDelayMs < 0 {
+		initialCfg.TypingDelayMs = 0
+	}
+
+	// Apply saved/CLI layout and typing delay immediately even if UDC hardware is absent.
+	if opts.Keyboard != nil {
+		_ = opts.Keyboard.SetLayout(initialCfg.KeyboardLayout)
+		opts.Keyboard.SetTypingSpeed(initialCfg.TypingDelayMs, 0)
 	}
 
 	manager := &GadgetManager{
@@ -133,8 +142,7 @@ func (gm *GadgetManager) GetStatus() GadgetStatus {
 	return status
 }
 
-// UpdateConfig applies and deploys a new USB gadget configuration.
-func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
+func normalizeGadgetConfig(cfg GadgetConfig) GadgetConfig {
 	if cfg.Ethernet && !cfg.RNDIS && !cfg.ECM {
 		cfg.RNDIS = true
 		cfg.ECM = true
@@ -143,9 +151,45 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 	if cfg.KeyboardLayout == "" {
 		cfg.KeyboardLayout = "US"
 	}
+	if cfg.TypingDelayMs < 0 {
+		cfg.TypingDelayMs = 0
+	}
 	if cfg.StorageSizeMB <= 0 {
 		cfg.StorageSizeMB = 100
 	}
+	return cfg
+}
+
+func (gm *GadgetManager) applyHIDDevicePaths(cfg GadgetConfig) {
+	if gm.keyboard != nil {
+		_ = gm.keyboard.SetLayout(cfg.KeyboardLayout)
+		gm.keyboard.SetTypingSpeed(cfg.TypingDelayMs, 0)
+		if cfg.Keyboard {
+			hidg0 := filepath.Join(gm.devDir, "hidg0")
+			gm.keyboard.SetDevicePath(hidg0)
+			if gm.ledWatcher != nil {
+				gm.ledWatcher.SetDevicePath(hidg0)
+			}
+		} else {
+			gm.keyboard.SetDevicePath("")
+		}
+	}
+
+	if gm.mouse != nil {
+		switch {
+		case !cfg.Mouse:
+			gm.mouse.SetDevicePath("")
+		case !cfg.Keyboard:
+			gm.mouse.SetDevicePath(filepath.Join(gm.devDir, "hidg0"))
+		default:
+			gm.mouse.SetDevicePath(filepath.Join(gm.devDir, "hidg1"))
+		}
+	}
+}
+
+// UpdateConfig applies and deploys a new USB gadget configuration.
+func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
+	cfg = normalizeGadgetConfig(cfg)
 
 	if _, err := hid.GetLayout(cfg.KeyboardLayout); err != nil {
 		return GadgetStatus{}, fmt.Errorf("invalid keyboard layout: %w", err)
@@ -156,10 +200,12 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		return GadgetStatus{}, fmt.Errorf("invalid gadget config: %w", err)
 	}
 
-	_ = gm.runner.Stop()
-
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
+
+	if gm.runner != nil {
+		_ = gm.runner.Stop()
+	}
 
 	if cfg.Storage {
 		if err := ensureBackingFile(gadgetCfg.MassStorage.BackingFile, cfg.StorageSizeMB); err != nil {
@@ -167,8 +213,12 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		}
 	}
 
-	_ = gm.keyboard.Close()
-	_ = gm.mouse.Close()
+	if gm.keyboard != nil {
+		_ = gm.keyboard.Close()
+	}
+	if gm.mouse != nil {
+		_ = gm.mouse.Close()
+	}
 	if gm.ledWatcher != nil {
 		gm.ledWatcher.SetDevicePath("")
 	}
@@ -180,26 +230,7 @@ func (gm *GadgetManager) UpdateConfig(cfg GadgetConfig) (GadgetStatus, error) {
 		return GadgetStatus{}, fmt.Errorf("failed to deploy configfs: %w", err)
 	}
 
-	_ = gm.keyboard.SetLayout(cfg.KeyboardLayout)
-	gm.keyboard.SetTypingSpeed(cfg.TypingDelayMs, 0)
-	if cfg.Keyboard {
-		hidg0 := filepath.Join(gm.devDir, "hidg0")
-		gm.keyboard.SetDevicePath(hidg0)
-		if gm.ledWatcher != nil {
-			gm.ledWatcher.SetDevicePath(hidg0)
-		}
-	} else {
-		gm.keyboard.SetDevicePath("")
-	}
-
-	switch {
-	case !cfg.Mouse:
-		gm.mouse.SetDevicePath("")
-	case !cfg.Keyboard:
-		gm.mouse.SetDevicePath(filepath.Join(gm.devDir, "hidg0"))
-	default:
-		gm.mouse.SetDevicePath(filepath.Join(gm.devDir, "hidg1"))
-	}
+	gm.applyHIDDevicePaths(cfg)
 
 	activeFuncs := gadgetCfg.ActiveFunctions()
 	gm.currentStatus.Config = cfg
@@ -277,9 +308,7 @@ func buildGadgetConfig(cfg GadgetConfig, storageDir string) gadget.Config {
 		}
 	}
 	if cfg.Serial {
-		gadgetCfg.ACM = gadget.SerialConfig{
-			Enabled: true,
-		}
+		gadgetCfg.ACM = gadget.SerialConfig{Enabled: true}
 	}
 
 	return gadgetCfg
@@ -319,7 +348,10 @@ func ensureBackingFile(path string, sizeMB int) error {
 			return fmt.Errorf("mkfs.vfat executable not found: %w", err)
 		}
 	}
-	cmd := exec.Command(mkfsPath, path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, mkfsPath, path)
 	if err := cmd.Run(); err != nil {
 		_ = os.Remove(path)
 		return fmt.Errorf("formatting disk image with %s: %w", mkfsPath, err)

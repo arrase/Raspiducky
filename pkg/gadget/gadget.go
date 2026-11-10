@@ -283,12 +283,12 @@ func (gm *GadgetManager) setupGadgetFunctions(gadgetPath string, cfgDir string, 
 		}
 	}
 	if cfg.Keyboard {
-		if err := gm.setupHID(gadgetPath, cfgDir, FuncKeyboard, "1", "8", keyboardReportDesc); err != nil {
+		if err := gm.setupHID(gadgetPath, cfgDir, FuncKeyboard, "1", "1", "8", keyboardReportDesc); err != nil {
 			return err
 		}
 	}
 	if cfg.Mouse {
-		if err := gm.setupHID(gadgetPath, cfgDir, FuncMouse, "2", "6", mouseReportDesc); err != nil {
+		if err := gm.setupHID(gadgetPath, cfgDir, FuncMouse, "0", "0", "6", mouseReportDesc); err != nil {
 			return err
 		}
 	}
@@ -385,15 +385,18 @@ func (gm *GadgetManager) deployValidatedUnlocked(ctx context.Context, cfg Config
 	return gm.bindUDC(ctx, gadgetPath)
 }
 
-func (gm *GadgetManager) setupHID(gadgetPath, cfgDir, name, protocol, reportLen string, reportDesc []byte) error {
+func (gm *GadgetManager) setupHID(gadgetPath, cfgDir, name, subclass, protocol, reportLen string, reportDesc []byte) error {
 	funcDir := filepath.Join(gadgetPath, "functions", name)
 	if err := os.MkdirAll(funcDir, 0755); err != nil {
 		return fmt.Errorf("failed creating %s function: %w", name, err)
 	}
+	// Disable the unused interrupt OUT endpoint so each HID function consumes 1 IN endpoint
+	// and accepts host SET_REPORT LED updates over EP0 without stalling.
 	if err := writeAttrs(funcDir,
+		attr{"subclass", subclass},
 		attr{"protocol", protocol},
-		attr{"subclass", "1"},
 		attr{"report_length", reportLen},
+		attr{"no_out_endpoint", "1"},
 	); err != nil {
 		return err
 	}
@@ -577,8 +580,12 @@ func (gm *GadgetManager) destroyGadgetUnlocked(ctx context.Context, gadgetPath s
 		return err
 	}
 
-	// 5. Remove each function directory inside functions/
+	// 5. Detach mass storage backing file if present, then remove each function directory
 	functionsDir := filepath.Join(gadgetPath, "functions")
+	lunFile := filepath.Join(functionsDir, FuncMassStorage, "lun.0", "file")
+	if _, err := os.Stat(lunFile); err == nil {
+		_ = os.WriteFile(lunFile, []byte(""), 0644)
+	}
 	if entries, err := os.ReadDir(functionsDir); err == nil {
 		for _, entry := range entries {
 			if err := gm.removeConfigfsDir(filepath.Join(functionsDir, entry.Name())); err != nil {

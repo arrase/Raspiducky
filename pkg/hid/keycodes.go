@@ -8,7 +8,7 @@ const (
 	ModLeftGUI    uint8 = 0x08
 	ModRightCtrl  uint8 = 0x10
 	ModRightShift uint8 = 0x20
-	ModRightAlt   uint8 = 0x40 // AltGr in many European layouts
+	ModRightAlt   uint8 = 0x40 // AltGr in European layouts
 	ModRightGUI   uint8 = 0x80
 )
 
@@ -112,13 +112,4 @@ const (
 
 	KeyNonUSBackslash uint8 = 0x64
 	KeyApplication    uint8 = 0x65
-
-	KeyLeftCtrl   uint8 = 0xe0
-	KeyLeftShift  uint8 = 0xe1
-	KeyLeftAlt    uint8 = 0xe2
-	KeyLeftGUI    uint8 = 0xe3
-	KeyRightCtrl  uint8 = 0xe4
-	KeyRightShift uint8 = 0xe5
-	KeyRightAlt   uint8 = 0xe6
-	KeyRightGUI   uint8 = 0xe7
 )

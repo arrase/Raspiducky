@@ -23,7 +23,7 @@ import (
 	"github.com/arrase/Raspiducky/pkg/scripting"
 )
 
-const version = "v1.0.0-modern"
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -47,7 +47,7 @@ func main() {
 	case "help", "-h", "--help":
 		printUsage()
 	default:
-		if len(command) > 0 && command[0] == '-' {
+		if strings.HasPrefix(command, "-") {
 			if err := runDaemon(os.Args[1:]); err != nil {
 				log.Fatalf("Error: %v", err)
 			}
@@ -72,11 +72,18 @@ func printUsage() {
 	fmt.Println("Daemon Flags:")
 	fmt.Println("  -port string     Port for Web Dashboard & API (default \":8000\")")
 	fmt.Println("  -storage string  Path to persistent storage directory (default \"/var/lib/raspiducky\")")
-	fmt.Println("  -layout string   Keyboard layout (US, ES, DE, FR) (default \"US\")")
-	fmt.Println("  -delay int       Keystroke typing delay in ms (default 10)")
+	fmt.Println("  -layout string   Override keyboard layout (US, ES, DE, FR)")
+	fmt.Println("  -delay int       Override keystroke typing delay in ms (default -1 uses saved/10ms)")
 }
 
 func initHIDDevices(ctx context.Context, layout string, delayMs int) (*hid.Keyboard, *hid.Mouse, *hid.LEDWatcher, error) {
+	if layout == "" {
+		layout = "US"
+	}
+	if delayMs < 0 {
+		delayMs = 10
+	}
+
 	kbd, err := hid.NewKeyboard("/dev/hidg0", layout)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to initialize keyboard: %w", err)
@@ -89,26 +96,23 @@ func initHIDDevices(ctx context.Context, layout string, delayMs int) (*hid.Keybo
 	return kbd, mouse, ledWatcher, nil
 }
 
+func resolveDelayOverride(delayFlag int) *int {
+	if delayFlag < 0 {
+		return nil
+	}
+	v := delayFlag
+	return &v
+}
+
 func runDaemon(args []string) error {
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	port := fs.String("port", ":8000", "Server port")
 	storageDir := fs.String("storage", "/var/lib/raspiducky", "Storage directory")
-	layout := fs.String("layout", "US", "Keyboard layout")
-	delay := fs.Int("delay", 10, "Keystroke typing delay in ms")
+	layout := fs.String("layout", "", "Keyboard layout override (US, ES, DE, FR)")
+	delay := fs.Int("delay", -1, "Keystroke typing delay override in ms")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
-
-	var optLayout string
-	var optDelay int
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "layout":
-			optLayout = *layout
-		case "delay":
-			optDelay = *delay
-		}
-	})
 
 	log.Printf("Starting Raspiducky Daemon %s on %s...", version, *port)
 
@@ -128,8 +132,8 @@ func runDaemon(args []string) error {
 		Keyboard:       kbd,
 		Mouse:          mouse,
 		LEDWatcher:     ledWatcher,
-		KeyboardLayout: optLayout,
-		TypingDelayMs:  optDelay,
+		KeyboardLayout: *layout,
+		TypingDelayMs:  resolveDelayOverride(*delay),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize server: %w", err)
@@ -140,19 +144,31 @@ func runDaemon(args []string) error {
 		Addr:              *port,
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
+	errCh := make(chan error, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+		if serveErr := httpServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			errCh <- serveErr
 		}
 	}()
 
-	log.Printf("Raspiducky Web Dashboard running at http://localhost%s", *port)
+	displayAddr := *port
+	if strings.HasPrefix(displayAddr, ":") {
+		displayAddr = "localhost" + displayAddr
+	}
+	log.Printf("Raspiducky Web Dashboard running at http://%s", displayAddr)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	defer signal.Stop(stop)
+
+	select {
+	case serveErr := <-errCh:
+		return fmt.Errorf("HTTP server error: %w", serveErr)
+	case <-stop:
+	}
 
 	log.Println("Shutting down daemon gracefully...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -167,8 +183,8 @@ func runDaemon(args []string) error {
 
 func runScriptCLI(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	layout := fs.String("layout", "US", "Keyboard layout")
-	delay := fs.Int("delay", 10, "Keystroke typing delay in ms")
+	layout := fs.String("layout", "", "Keyboard layout override (US, ES, DE, FR)")
+	delay := fs.Int("delay", -1, "Keystroke typing delay override in ms")
 	serverURL := fs.String("server", "http://127.0.0.1:8000", "Daemon API URL")
 
 	var filePath string
@@ -187,17 +203,6 @@ func runScriptCLI(args []string) error {
 		return errors.New("usage: raspiducky run <script-file>")
 	}
 
-	var optLayout string
-	var optDelay int
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "layout":
-			optLayout = *layout
-		case "delay":
-			optDelay = *delay
-		}
-	})
-
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("reading script file %s: %w", filePath, err)
@@ -206,7 +211,8 @@ func runScriptCLI(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if handled, err := runViaDaemon(ctx, strings.TrimRight(*serverURL, "/"), filepath.Base(filePath), string(content), optLayout, optDelay); handled {
+	delayOverride := resolveDelayOverride(*delay)
+	if handled, err := runViaDaemon(ctx, strings.TrimRight(*serverURL, "/"), filepath.Base(filePath), string(content), *layout, delayOverride); handled {
 		if err != nil {
 			return err
 		}
@@ -221,7 +227,12 @@ func runScriptCLI(args []string) error {
 	defer func() { _ = kbd.Close() }()
 	defer func() { _ = mouse.Close() }()
 	defer func() { _ = ledWatcher.Close() }()
-	defer func() { _ = kbd.ReleaseKeys() }()
+
+	stopInterrupt := context.AfterFunc(ctx, func() {
+		kbd.Interrupt()
+		mouse.Interrupt()
+	})
+	defer stopInterrupt()
 
 	engine := scripting.NewScriptEngine(kbd, mouse, ledWatcher)
 	if err := engine.Run(ctx, "", filePath, string(content), os.Stdout); err != nil {
@@ -233,7 +244,10 @@ func runScriptCLI(args []string) error {
 }
 
 func stopDaemonJob(client *http.Client, baseURL string) {
-	stopReq, err := http.NewRequest(http.MethodPost, baseURL+"/api/stop", bytes.NewReader([]byte("{}")))
+	stopCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	stopReq, err := http.NewRequestWithContext(stopCtx, http.MethodPost, baseURL+"/api/stop", bytes.NewReader([]byte("{}")))
 	if err != nil {
 		return
 	}
@@ -243,7 +257,16 @@ func stopDaemonJob(client *http.Client, baseURL string) {
 	}
 }
 
-func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, delayMs int) (bool, error) {
+func isDaemonUnreachable(err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return true
+	}
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr)
+}
+
+func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, delayMs *int) (bool, error) {
 	if baseURL == "" {
 		return false, nil
 	}
@@ -261,11 +284,20 @@ func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, de
 	}
 	probeResp, err := client.Do(probeReq)
 	if err != nil {
-		return false, nil
+		if ctx.Err() != nil {
+			return true, ctx.Err()
+		}
+		if isDaemonUnreachable(err) {
+			return false, nil
+		}
+		return true, fmt.Errorf("contacting daemon at %s: %w", baseURL, err)
 	}
 	_ = probeResp.Body.Close()
-	if probeResp.StatusCode != http.StatusOK {
+	if probeResp.StatusCode == http.StatusNotFound {
 		return false, nil
+	}
+	if probeResp.StatusCode != http.StatusOK {
+		return true, fmt.Errorf("daemon health check returned status %d", probeResp.StatusCode)
 	}
 
 	reqBody, err := json.Marshal(api.RunRequest{
@@ -311,7 +343,7 @@ func runViaDaemon(ctx context.Context, baseURL, name, content, layout string, de
 }
 
 func pollDaemonJob(ctx context.Context, client *http.Client, baseURL, jobID string) error {
-	ticker := time.NewTicker(25 * time.Millisecond)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -349,22 +381,29 @@ func checkDaemonJobStatus(ctx context.Context, client *http.Client, baseURL, job
 		}
 		return false, err
 	}
+	defer func() { _ = statusResp.Body.Close() }()
+
+	if statusResp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("daemon job status returned %d", statusResp.StatusCode)
+	}
+
 	var job *api.JobStatus
-	decodeErr := json.NewDecoder(statusResp.Body).Decode(&job)
-	_ = statusResp.Body.Close()
-	if decodeErr != nil || job == nil || job.ID != jobID {
-		return false, nil
+	if err := json.NewDecoder(statusResp.Body).Decode(&job); err != nil {
+		return false, fmt.Errorf("decoding daemon job status: %w", err)
+	}
+	if job == nil || job.ID != jobID {
+		return false, errors.New("daemon job was superseded or reset")
 	}
 
 	switch job.Status {
-	case "completed":
+	case api.JobStatusCompleted:
 		return true, nil
-	case "failed":
+	case api.JobStatusFailed:
 		if job.Error != "" {
 			return false, errors.New(job.Error)
 		}
 		return false, errors.New("script execution failed on daemon")
-	case "stopped":
+	case api.JobStatusStopped:
 		return false, context.Canceled
 	default:
 		return false, nil

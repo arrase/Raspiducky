@@ -11,12 +11,21 @@ const GADGET_TOGGLES = [
     { id: 'gadget-serial', key: 'serial' }
 ];
 
+function initGadgetControls() {
+    document.getElementById('gadget-config-form').addEventListener('submit', applyGadgetConfig);
+    document.getElementById('btn-reload-gadget').addEventListener('click', loadGadgetStatus);
+
+    for (const { id } of GADGET_TOGGLES) {
+        document.getElementById(id).addEventListener('change', updateEndpointMonitor);
+    }
+}
+
 async function loadGadgetStatus() {
     try {
         const data = await apiCall('/api/gadget');
         if (data) {
             updateGadgetUI(data);
-            appendLog('INFO', 'GADGET', 'Loaded gadget status from USB configfs');
+            appendLog('INFO', 'GADGET', 'Loaded gadget status from USB configfs.');
         }
     } catch (err) {
         appendLog('ERROR', 'GADGET', `Failed to load gadget status: ${err.message}`);
@@ -31,7 +40,7 @@ function populateGadgetToggles(cfg) {
     document.getElementById('storage-readonly').checked = Boolean(cfg.storageReadOnly);
 }
 
-function populateGadgetForm(cfg) {
+function populateGadgetForm(cfg, forceSyncEditorDelay = false) {
     const fields = [
         ['vendor-id', cfg.vendorId],
         ['product-id', cfg.productId],
@@ -40,31 +49,31 @@ function populateGadgetForm(cfg) {
         ['serial-number', cfg.serialNumber],
         ['keyboard-layout', cfg.keyboardLayout],
         ['storage-size', cfg.storageSizeMb],
-        ['typing-delay', cfg.typingDelayMs],
+        ['typing-delay', cfg.typingDelayMs]
     ];
     for (const [id, value] of fields) {
         if (value !== undefined && value !== null) {
             document.getElementById(id).value = value;
         }
     }
-    if (cfg.typingDelayMs !== undefined && cfg.typingDelayMs !== null) {
+    if (cfg.typingDelayMs !== undefined && cfg.typingDelayMs !== null && (!state.editorDelayDirty || forceSyncEditorDelay)) {
         document.getElementById('editor-typing-delay').value = cfg.typingDelayMs;
     }
 }
 
-function updateGadgetUI(gadgetData) {
+function updateGadgetUI(gadgetData, forceSyncEditorDelay = false) {
     state.gadget = { ...state.gadget, ...gadgetData };
     const cfg = state.gadget.config;
 
     document.getElementById('udc-name').textContent = state.gadget.udc || 'Inactive';
 
     populateGadgetToggles(cfg);
-    populateGadgetForm(cfg);
+    populateGadgetForm(cfg, forceSyncEditorDelay);
     updateEndpointMonitor();
 }
 
 function countActiveEndpoints() {
-    const costs = state.gadget.endpointCosts || {};
+    const costs = state.gadget.endpointCosts;
     let total = 0;
     let anyChecked = false;
     for (const { id, key } of GADGET_TOGGLES) {
@@ -90,7 +99,7 @@ function updateEndpointMonitor() {
     if (endpoints === 0) {
         countElem.textContent = maxEndpoints > 0 ? `0 / ${maxEndpoints}` : '0 / ?';
         progressElem.style.width = '0%';
-        progressElem.style.background = 'var(--accent-red)';
+        progressElem.style.backgroundColor = 'var(--accent-red)';
         warningElem.textContent = 'Select at least one USB function to deploy.';
         warningElem.style.display = 'block';
         applyBtn.disabled = true;
@@ -100,7 +109,7 @@ function updateEndpointMonitor() {
     if (maxEndpoints <= 0) {
         countElem.textContent = `${endpoints} / ?`;
         progressElem.style.width = '50%';
-        progressElem.style.background = 'var(--accent-cyan)';
+        progressElem.style.backgroundColor = 'var(--accent-cyan)';
         warningElem.textContent = '';
         warningElem.style.display = 'none';
         applyBtn.disabled = false;
@@ -112,21 +121,13 @@ function updateEndpointMonitor() {
 
     countElem.textContent = `${endpoints} / ${maxEndpoints}`;
     progressElem.style.width = `${pct}%`;
-    progressElem.style.background = exceeded ? 'var(--accent-red)' : 'var(--accent-cyan)';
+    progressElem.style.backgroundColor = exceeded ? 'var(--accent-red)' : 'var(--accent-cyan)';
     warningElem.textContent = exceeded
         ? `Hardware limit exceeded. The USB controller supports a maximum of ${maxEndpoints} endpoints.`
         : '';
     warningElem.style.display = exceeded ? 'block' : 'none';
     applyBtn.disabled = exceeded;
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    for (const { id } of GADGET_TOGGLES) {
-        document.getElementById(id).addEventListener('change', () => {
-            updateEndpointMonitor();
-        });
-    }
-});
 
 function setTogglesDisabled(disabled) {
     for (const { id } of GADGET_TOGGLES) {
@@ -135,7 +136,7 @@ function setTogglesDisabled(disabled) {
 }
 
 async function applyGadgetConfig(event) {
-    if (event) event.preventDefault();
+    event.preventDefault();
 
     document.getElementById('btn-apply-gadget').disabled = true;
     setTogglesDisabled(true);
@@ -159,10 +160,11 @@ async function applyGadgetConfig(event) {
     try {
         appendLog('INFO', 'GADGET', `Deploying gadget config (VID: ${payload.vendorId}, PID: ${payload.productId})...`);
         const result = await apiCall('/api/gadget', 'POST', payload);
+        state.editorDelayDirty = false;
         if (result) {
-            updateGadgetUI(result);
+            updateGadgetUI(result, true);
         }
-        appendLog('INFO', 'GADGET', 'USB Gadget configuration successfully deployed!');
+        appendLog('INFO', 'GADGET', 'USB Gadget configuration successfully deployed.');
     } catch (err) {
         populateGadgetToggles(state.gadget.config);
         appendLog('ERROR', 'GADGET', `Failed to deploy USB gadget config: ${err.message}`);

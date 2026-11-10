@@ -16,6 +16,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+func intPtr(v int) *int {
+	return &v
+}
+
 func setupTestServer(t *testing.T, ledWatcher *hid.LEDWatcher) *Server {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -317,7 +321,7 @@ func TestGadgetManager_UpdateConfig_TypingDelayMsAndCLIFlags(t *testing.T) {
 		Keyboard:       server.gadgetManager.keyboard,
 		Mouse:          server.gadgetManager.mouse,
 		KeyboardLayout: "ES",
-		TypingDelayMs:  55,
+		TypingDelayMs:  intPtr(55),
 		GadgetManager:  server.gadgetManager.GadgetManager,
 	})
 	if cliGM.currentStatus.Config.KeyboardLayout != "ES" || cliGM.currentStatus.Config.TypingDelayMs != 55 {
@@ -325,6 +329,18 @@ func TestGadgetManager_UpdateConfig_TypingDelayMsAndCLIFlags(t *testing.T) {
 	}
 	if server.gadgetManager.keyboard.GetLayout() != "ES" {
 		t.Errorf("Expected keyboard layout 'ES', got %q", server.gadgetManager.keyboard.GetLayout())
+	}
+
+	// Verify -delay 0 explicitly overrides saved non-zero typingDelayMs
+	zeroGM := NewGadgetManager(server.hub, server.runnerEngine, ServerOptions{
+		StorageDir:    server.gadgetManager.storageDir,
+		Keyboard:      server.gadgetManager.keyboard,
+		Mouse:         server.gadgetManager.mouse,
+		TypingDelayMs: intPtr(0),
+		GadgetManager: server.gadgetManager.GadgetManager,
+	})
+	if zeroGM.currentStatus.Config.TypingDelayMs != 0 {
+		t.Errorf("Expected CLI flag -delay 0 to override saved config to 0, got %d", zeroGM.currentStatus.Config.TypingDelayMs)
 	}
 }
 
@@ -337,7 +353,7 @@ func TestRunnerEngine_Run_TypingDelayMsAndStateRestoration(t *testing.T) {
 		Name:          "typing_delay.ducky",
 		Type:          "duckyscript",
 		Script:        "LAYOUT ES\nTYPING_SPEED 100 50\nDELAY 10\n",
-		TypingDelayMs: 45,
+		TypingDelayMs: intPtr(45),
 		Layout:        "DE",
 	})
 	if err != nil {
@@ -362,12 +378,29 @@ func TestRunnerEngine_Run_TypingDelayMsAndStateRestoration(t *testing.T) {
 		t.Errorf("Expected base keyboard layout 'US' restored after script, got %q", gotLayout)
 	}
 
+	// Verify explicit TypingDelayMs=0 override works on RunRequest without mutating saved base delay
+	if _, err := server.runnerEngine.Run(RunRequest{
+		Name:          "zero_delay.ducky",
+		Type:          "duckyscript",
+		Script:        "STRING a\n",
+		TypingDelayMs: intPtr(0),
+	}); err != nil {
+		t.Fatalf("Run zero_delay failed: %v", err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if job := server.runnerEngine.GetActiveJob(); job != nil && job.Status == "completed" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	// Verify concurrent UpdateConfig while a job is running stops the job and applies the new config without race
 	_, err = server.runnerEngine.Run(RunRequest{
 		Name:          "long_running.ducky",
 		Type:          "duckyscript",
 		Script:        "DELAY 5000\n",
-		TypingDelayMs: 99,
+		TypingDelayMs: intPtr(99),
 		Layout:        "FR",
 	})
 	if err != nil {
@@ -533,5 +566,64 @@ func TestServer_HTTPHandlersAndFailedJob(t *testing.T) {
 	job := server.runnerEngine.GetActiveJob()
 	if job == nil || job.Status != "failed" {
 		t.Fatalf("Expected job status 'failed', got %+v", job)
+	}
+
+	// Verify DuckyScript syntax errors fail synchronously before spawning a job
+	badDuckyResp, err := http.Post(ts.URL+"/api/run", "application/json", strings.NewReader(`{"type":"duckyscript","script":"STRNG typo"}`))
+	if err != nil {
+		t.Fatalf("POST /api/run failed: %v", err)
+	}
+	_ = badDuckyResp.Body.Close()
+	if badDuckyResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 Bad Request for invalid DuckyScript, got %d", badDuckyResp.StatusCode)
+	}
+
+	// Verify cross-origin CSRF requests to mutating endpoints and WebSocket are rejected (403 Forbidden)
+	csrfReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/run", strings.NewReader(`{"type":"duckyscript","script":"ENTER"}`))
+	csrfReq.Header.Set("Origin", "http://evil.example")
+	csrfResp, err := http.DefaultClient.Do(csrfReq)
+	if err != nil {
+		t.Fatalf("Cross-origin POST /api/run request failed: %v", err)
+	}
+	_ = csrfResp.Body.Close()
+	if csrfResp.StatusCode != http.StatusForbidden {
+		t.Errorf("Expected 403 Forbidden for cross-origin POST /api/run, got %d", csrfResp.StatusCode)
+	}
+
+	secFetchReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/stop", strings.NewReader(`{}`))
+	secFetchReq.Header.Set("Sec-Fetch-Site", "cross-site")
+	secFetchResp, err := http.DefaultClient.Do(secFetchReq)
+	if err != nil {
+		t.Fatalf("Sec-Fetch-Site POST /api/stop request failed: %v", err)
+	}
+	_ = secFetchResp.Body.Close()
+	if secFetchResp.StatusCode != http.StatusForbidden {
+		t.Errorf("Expected 403 Forbidden for cross-site Sec-Fetch-Site, got %d", secFetchResp.StatusCode)
+	}
+
+	wsHeaders := http.Header{"Origin": []string{"http://evil.example"}}
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws"
+	wsConn, wsResp, wsErr := websocket.DefaultDialer.Dial(wsURL, wsHeaders)
+	if wsConn != nil {
+		_ = wsConn.Close()
+	}
+	if wsResp != nil {
+		_ = wsResp.Body.Close()
+	}
+	if wsErr == nil {
+		t.Errorf("Expected cross-origin WebSocket dial to be rejected")
+	}
+
+	// Verify static dashboard security headers
+	indexResp, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("GET / failed: %v", err)
+	}
+	_ = indexResp.Body.Close()
+	if indexResp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 OK on /, got %d", indexResp.StatusCode)
+	}
+	if indexResp.Header.Get("Content-Security-Policy") == "" || indexResp.Header.Get("X-Frame-Options") != "DENY" {
+		t.Errorf("Expected CSP and X-Frame-Options headers on /, got %v", indexResp.Header)
 	}
 }

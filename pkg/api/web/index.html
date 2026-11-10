@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Raspiducky | Embedded USB Gadget & Payload Engine</title>
+    <title>Raspiducky | Embedded USB Gadget &amp; Payload Engine</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="app-container">
-        <!-- Main Top Navigation & Status Bar -->
         <header class="app-header">
             <div class="brand">
                 <div class="brand-icon">
@@ -21,17 +20,16 @@
                 </div>
                 <div class="brand-text">
                     <h1>Raspiducky</h1>
-                    <span class="subtitle">Embedded USB Dashboard & Payload Engine</span>
+                    <span class="subtitle">Embedded USB Dashboard &amp; Payload Engine</span>
                 </div>
             </div>
 
-            <!-- Global Hardware & Connection Indicators -->
             <div class="header-status">
                 <div class="status-badge" id="ws-status-badge">
                     <span class="status-dot disconnected" id="ws-status-dot"></span>
                     <span id="ws-status-text">Disconnected</span>
                 </div>
-                
+
                 <div class="status-badge" id="gadget-status-badge">
                     <span class="badge-label">UDC:</span>
                     <span class="badge-value" id="udc-name">Checking...</span>
@@ -54,28 +52,25 @@
             </div>
         </header>
 
-        <!-- Navigation Tabs -->
-        <nav class="nav-tabs">
-            <button class="nav-tab active" id="tab-btn-gadget" onclick="switchTab('gadget')">
+        <div class="nav-tabs" role="tablist" aria-label="Dashboard sections">
+            <button type="button" class="nav-tab" role="tab" id="tab-btn-gadget" data-tab="gadget" aria-selected="true" tabindex="0">
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                USB Gadget & Controls
+                USB Gadget &amp; Controls
             </button>
-            <button class="nav-tab" id="tab-btn-editor" onclick="switchTab('editor')">
+            <button type="button" class="nav-tab" role="tab" id="tab-btn-editor" data-tab="editor" aria-selected="false" tabindex="-1">
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                 Script Execution Engine
             </button>
-            <button class="nav-tab" id="tab-btn-library" onclick="switchTab('library')">
+            <button type="button" class="nav-tab" role="tab" id="tab-btn-library" data-tab="library" aria-selected="false" tabindex="-1">
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                 Payload Library
             </button>
-        </nav>
+        </div>
 
-        <!-- Main Content Views -->
         <main class="content-area">
             <!-- TAB 1: USB Gadget Controls -->
-            <section class="tab-content active" id="view-gadget">
+            <div class="tab-content" id="view-gadget" data-tab="gadget" role="tabpanel" aria-labelledby="tab-btn-gadget">
                 <div class="grid-2col">
-                    <!-- Interfaces Toggle Panel -->
                     <div class="glass-card">
                         <div class="card-header">
                             <h2>USB Emulation Functions</h2>
@@ -89,7 +84,7 @@
                                         <span class="toggle-desc">Emulate Standard 104-key USB Keyboard</span>
                                     </div>
                                     <span class="switch">
-                                        <input type="checkbox" id="gadget-keyboard" aria-label="USB Keyboard (HID)" checked>
+                                        <input type="checkbox" id="gadget-keyboard" checked>
                                         <span class="slider"></span>
                                     </span>
                                 </label>
@@ -100,7 +95,7 @@
                                         <span class="toggle-desc">Emulate USB Relative / Absolute Mouse</span>
                                     </div>
                                     <span class="switch">
-                                        <input type="checkbox" id="gadget-mouse" aria-label="USB Mouse (HID)" checked>
+                                        <input type="checkbox" id="gadget-mouse" checked>
                                         <span class="slider"></span>
                                     </span>
                                 </label>
@@ -111,7 +106,7 @@
                                         <span class="toggle-desc">Emulate USB Flash Drive / CD-ROM Storage</span>
                                     </div>
                                     <span class="switch">
-                                        <input type="checkbox" id="gadget-storage" aria-label="Mass Storage">
+                                        <input type="checkbox" id="gadget-storage">
                                         <span class="slider"></span>
                                     </span>
                                 </label>
@@ -122,7 +117,7 @@
                                         <span class="toggle-desc">Emulate Windows USB Network Adapter</span>
                                     </div>
                                     <span class="switch">
-                                        <input type="checkbox" id="gadget-rndis" aria-label="USB Ethernet (RNDIS)">
+                                        <input type="checkbox" id="gadget-rndis">
                                         <span class="slider"></span>
                                     </span>
                                 </label>
@@ -133,7 +128,7 @@
                                         <span class="toggle-desc">Emulate Linux / macOS CDC-ECM Network Adapter</span>
                                     </div>
                                     <span class="switch">
-                                        <input type="checkbox" id="gadget-ecm" aria-label="USB Ethernet (ECM)">
+                                        <input type="checkbox" id="gadget-ecm">
                                         <span class="slider"></span>
                                     </span>
                                 </label>
@@ -144,61 +139,57 @@
                                         <span class="toggle-desc">Emulate CDC-ACM Serial Port</span>
                                     </div>
                                     <span class="switch">
-                                        <input type="checkbox" id="gadget-serial" aria-label="USB Serial Console (ACM)">
+                                        <input type="checkbox" id="gadget-serial">
                                         <span class="slider"></span>
                                     </span>
                                 </label>
                             </div>
-                            
-                            <!-- Hardware Endpoint Limit Monitor -->
+
                             <div class="endpoint-monitor">
-                                <div style="display: flex; justify-content: space-between; margin-top: 15px; font-size: 0.9em;">
+                                <div class="endpoint-summary">
                                     <span>Hardware Endpoints Used (incl. EP0)</span>
-                                    <span id="endpoint-count" style="font-weight: bold;">3 / 16</span>
+                                    <span id="endpoint-count" class="endpoint-count">3 / 16</span>
                                 </div>
-                                <div class="progress-bar-container" style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 8px; margin-top: 5px; overflow: hidden;">
-                                    <div id="endpoint-progress" style="background: var(--accent-cyan); height: 100%; width: 28%; transition: width 0.3s, background 0.3s;"></div>
+                                <div class="progress-bar-container">
+                                    <div id="endpoint-progress" class="endpoint-progress"></div>
                                 </div>
-                                <div id="endpoint-warning" style="color: var(--accent-red); font-size: 0.85em; margin-top: 5px; display: none;">
-                                    Hardware endpoint limit exceeded.
-                                </div>
+                                <div id="endpoint-warning" class="endpoint-warning" role="status" aria-live="polite"></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Vendor / Product Identifiers Form -->
                     <div class="glass-card">
                         <div class="card-header">
-                            <h2>USB Hardware Identifiers</h2>
-                            <p>Customize Vendor, Product ID & USB strings</p>
+                            <h2 id="gadget-identifiers-heading">USB Hardware Identifiers</h2>
+                            <p>Customize Vendor, Product ID &amp; USB strings</p>
                         </div>
                         <div class="card-body">
-                            <form id="gadget-config-form" onsubmit="applyGadgetConfig(event)">
+                            <form id="gadget-config-form" aria-labelledby="gadget-identifiers-heading">
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="vendor-id">Vendor ID (VID)</label>
-                                        <input type="text" id="vendor-id" placeholder="0x1d6b" value="0x1d6b" required pattern="^0x[0-9a-fA-F]{4}$">
+                                        <input type="text" id="vendor-id" name="vendorId" placeholder="0x1d6b" value="0x1d6b" required pattern="^0x[0-9a-fA-F]{4}$" autocorrect="off" autocapitalize="none" spellcheck="false">
                                     </div>
                                     <div class="form-group">
                                         <label for="product-id">Product ID (PID)</label>
-                                        <input type="text" id="product-id" placeholder="0x0104" value="0x0104" required pattern="^0x[0-9a-fA-F]{4}$">
+                                        <input type="text" id="product-id" name="productId" placeholder="0x0104" value="0x0104" required pattern="^0x[0-9a-fA-F]{4}$" autocorrect="off" autocapitalize="none" spellcheck="false">
                                     </div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="manufacturer-name">Manufacturer String</label>
-                                    <input type="text" id="manufacturer-name" placeholder="Raspiducky Labs" value="Raspiducky Labs" required>
+                                    <input type="text" id="manufacturer-name" name="manufacturer" placeholder="Raspiducky Labs" value="Raspiducky Labs" required>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="product-name">Product String</label>
-                                    <input type="text" id="product-name" placeholder="Raspiducky Multi-Function HID" value="Raspiducky Multi-Function HID" required>
+                                    <input type="text" id="product-name" name="product" placeholder="Raspiducky Multi-Function HID" value="Raspiducky Multi-Function HID" required>
                                 </div>
 
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="keyboard-layout">Keyboard Layout</label>
-                                        <select id="keyboard-layout" required>
+                                        <select id="keyboard-layout" name="keyboardLayout" required>
                                             <option value="US">US (English)</option>
                                             <option value="ES">ES (Spanish)</option>
                                             <option value="DE">DE (German)</option>
@@ -207,29 +198,29 @@
                                     </div>
                                     <div class="form-group">
                                         <label for="storage-size">Mass Storage Size (MB)</label>
-                                        <input type="number" id="storage-size" placeholder="100" value="100" min="10" max="8192" required>
+                                        <input type="number" id="storage-size" name="storageSizeMb" placeholder="100" value="100" min="10" max="8192" required>
                                     </div>
                                 </div>
 
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="serial-number">Serial Number</label>
-                                        <input type="text" id="serial-number" placeholder="RPD-2026-0001" value="RPD-2026-0001" required>
+                                        <input type="text" id="serial-number" name="serialNumber" placeholder="RPD-2026-0001" value="RPD-2026-0001" required autocorrect="off" autocapitalize="none" spellcheck="false">
                                     </div>
                                     <div class="form-group">
                                         <label for="typing-delay">Typing Delay (ms)</label>
-                                        <input type="number" id="typing-delay" placeholder="10" value="10" min="0" max="5000" required>
+                                        <input type="number" id="typing-delay" name="typingDelayMs" placeholder="10" value="10" min="0" max="5000" required>
                                     </div>
                                 </div>
 
-                                <div class="form-row" style="margin-bottom: 12px;">
-                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
-                                        <input type="checkbox" id="storage-cdrom">
-                                        Mass Storage as CD-ROM
+                                <div class="form-row checkbox-row">
+                                    <label class="inline-checkbox" for="storage-cdrom">
+                                        <input type="checkbox" id="storage-cdrom" name="storageCdrom">
+                                        <span>Mass Storage as CD-ROM</span>
                                     </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
-                                        <input type="checkbox" id="storage-readonly">
-                                        Mass Storage Read-Only
+                                    <label class="inline-checkbox" for="storage-readonly">
+                                        <input type="checkbox" id="storage-readonly" name="storageReadOnly">
+                                        <span>Mass Storage Read-Only</span>
                                     </label>
                                 </div>
 
@@ -238,7 +229,7 @@
                                         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                                         Deploy USB Configuration
                                     </button>
-                                    <button type="button" class="btn btn-secondary" onclick="loadGadgetStatus()">
+                                    <button type="button" class="btn btn-secondary" id="btn-reload-gadget">
                                         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                         Reload Status
                                     </button>
@@ -247,49 +238,47 @@
                         </div>
                     </div>
                 </div>
-            </section>
+            </div>
 
             <!-- TAB 2: Script Execution Engine -->
-            <section class="tab-content" id="view-editor">
+            <div class="tab-content" id="view-editor" data-tab="editor" role="tabpanel" aria-labelledby="tab-btn-editor" hidden="until-found">
                 <div class="editor-layout">
-                    <!-- Top Toolbar Controls -->
                     <div class="toolbar glass-panel">
                         <div class="toolbar-left">
                             <div class="form-group inline">
                                 <label for="script-title">Payload Title:</label>
-                                <input type="text" id="script-title" value="untitled_payload.ducky" placeholder="payload_name.ducky">
+                                <input type="text" id="script-title" value="untitled_payload.ducky" placeholder="payload_name.ducky" autocorrect="off" autocapitalize="none" spellcheck="false">
                             </div>
                             <div class="form-group inline">
                                 <label for="script-format">Format:</label>
-                                <select id="script-format" onchange="onScriptFormatChange()">
-                                    <option value="duckyscript">DuckyScript 1.0/2.0</option>
+                                <select id="script-format">
+                                    <option value="duckyscript">DuckyScript 1.0–3.0</option>
                                     <option value="javascript">JavaScript / HIDScript</option>
                                 </select>
                             </div>
                             <div class="form-group inline">
                                 <label for="editor-typing-delay">Delay (ms):</label>
-                                <input type="number" id="editor-typing-delay" value="10" min="0" max="5000" style="width: 85px;">
+                                <input type="number" id="editor-typing-delay" value="10" min="0" max="5000" class="delay-input">
                             </div>
                         </div>
 
                         <div class="toolbar-right">
-                            <button class="btn btn-success" id="btn-run-script" onclick="runScript()">
+                            <button type="button" class="btn btn-success" id="btn-run-script">
                                 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                                 Run Payload
                             </button>
-                            <button class="btn btn-danger" id="btn-stop-script" onclick="stopScript()" disabled>
+                            <button type="button" class="btn btn-danger" id="btn-stop-script" disabled>
                                 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
                                 Stop Job
                             </button>
-                            <button class="btn btn-secondary" onclick="saveCurrentScript()">
+                            <button type="button" class="btn btn-secondary" id="btn-save-script">
                                 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                                 Save to Library
                             </button>
                         </div>
                     </div>
 
-                    <!-- Job Execution Bar -->
-                    <div class="job-bar glass-panel hidden" id="job-status-bar">
+                    <div class="job-bar glass-panel hidden" id="job-status-bar" role="status" aria-live="polite">
                         <div class="job-info">
                             <span class="job-status-pill running" id="job-status-pill">RUNNING</span>
                             <span class="job-id" id="job-id-display">Job ID: ---</span>
@@ -298,47 +287,44 @@
                         <div class="job-timer" id="job-timer-display">Duration: 0.0s</div>
                     </div>
 
-                    <!-- Split Container: Live Code Editor & Live Console Output -->
                     <div class="editor-split">
-                        <!-- Left Panel: Code Editor -->
                         <div class="editor-container glass-card">
                             <div class="card-header flex-between">
-                                <h3>Script Editor</h3>
-                                <div class="editor-quick-snippets">
-                                    <button class="chip" onclick="insertSnippet('DELAY 500\n')">+ DELAY</button>
-                                    <button class="chip" onclick="insertSnippet('STRING Hello World\n')">+ STRING</button>
-                                    <button class="chip" onclick="insertSnippet('GUI r\n')">+ GUI r</button>
-                                    <button class="chip" onclick="insertSnippet('ENTER\n')">+ ENTER</button>
+                                <h2>Script Editor</h2>
+                                <div class="editor-quick-snippets" id="editor-quick-snippets">
+                                    <button type="button" class="chip" data-snippet="delay">+ DELAY</button>
+                                    <button type="button" class="chip" data-snippet="string">+ STRING</button>
+                                    <button type="button" class="chip" data-snippet="gui-r">+ GUI r</button>
+                                    <button type="button" class="chip" data-snippet="enter">+ ENTER</button>
                                 </div>
                             </div>
                             <div class="editor-body">
-                                <div class="line-numbers" id="line-numbers">1</div>
-                                <textarea id="code-editor" aria-label="Script Code Editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Enter DuckyScript or HIDScript commands here...&#10;&#10;REM Example DuckyScript Payload&#10;DELAY 1000&#10;GUI r&#10;DELAY 500&#10;STRING notepad.exe&#10;ENTER&#10;DELAY 1000&#10;STRING Hello from Raspiducky!&#10;ENTER" oninput="updateLineNumbers()" onscroll="syncLineNumbersScroll()" onkeydown="handleEditorKeyDown(event)"></textarea>
+                                <div class="line-numbers" id="line-numbers" aria-hidden="true">1</div>
+                                <textarea id="code-editor" aria-label="Script Code Editor" spellcheck="false" autocorrect="off" autocapitalize="none" autocomplete="off" placeholder="Enter DuckyScript or HIDScript commands here...&#10;&#10;REM Example DuckyScript Payload&#10;DELAY 1000&#10;GUI r&#10;DELAY 500&#10;STRING notepad.exe&#10;ENTER&#10;DELAY 1000&#10;STRING Hello from Raspiducky!&#10;ENTER"></textarea>
                             </div>
                         </div>
 
-                        <!-- Right Panel: Live Console Output Terminal -->
                         <div class="terminal-container glass-card">
                             <div class="card-header flex-between">
                                 <div class="terminal-title">
-                                    <span class="terminal-dot red"></span>
-                                    <span class="terminal-dot yellow"></span>
-                                    <span class="terminal-dot green"></span>
-                                    <h3>Live Console Output</h3>
+                                    <span class="terminal-dot red" aria-hidden="true"></span>
+                                    <span class="terminal-dot yellow" aria-hidden="true"></span>
+                                    <span class="terminal-dot green" aria-hidden="true"></span>
+                                    <h2>Live Console Output</h2>
                                 </div>
                                 <div class="terminal-controls">
-                                    <select id="log-filter" aria-label="Filter Terminal Logs" onchange="filterTerminalLogs()">
+                                    <select id="log-filter" aria-label="Filter Terminal Logs">
                                         <option value="ALL">All Levels</option>
                                         <option value="INFO">INFO</option>
                                         <option value="WARN">WARN</option>
                                         <option value="ERROR">ERROR</option>
                                         <option value="HID">HID Events</option>
                                     </select>
-                                    <button class="btn btn-xs btn-secondary" onclick="clearConsole()">Clear</button>
+                                    <button type="button" class="btn btn-xs btn-secondary" id="btn-clear-console">Clear</button>
                                 </div>
                             </div>
-                            <div class="terminal-body" id="terminal-output">
-                                <div class="log-entry log-system" data-level="INFO" data-source="SYS">
+                            <div class="terminal-body" id="terminal-output" role="log" aria-live="off">
+                                <div class="log-entry log-info" data-level="INFO" data-source="SYS">
                                     <span class="log-time">[00:00:00]</span>
                                     <span class="log-tag tag-info">SYS</span>
                                     <span class="log-msg">Raspiducky Console Ready. Waiting for payload execution...</span>
@@ -347,27 +333,25 @@
                         </div>
                     </div>
                 </div>
-            </section>
+            </div>
 
             <!-- TAB 3: Payload Library -->
-            <section class="tab-content" id="view-library">
+            <div class="tab-content" id="view-library" data-tab="library" role="tabpanel" aria-labelledby="tab-btn-library" hidden="until-found">
                 <div class="library-header glass-panel flex-between">
-                    <div class="library-search">
+                    <search class="library-search">
                         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" id="library-search-input" aria-label="Search saved payloads" placeholder="Search saved payloads..." oninput="renderLibrary()">
-                    </div>
+                        <input type="search" id="library-search-input" aria-label="Search saved payloads" placeholder="Search saved payloads..." autocorrect="off" autocapitalize="none" spellcheck="false">
+                    </search>
                     <div class="library-actions">
-                        <button class="btn btn-primary" onclick="openNewScriptModal()">
+                        <button type="button" class="btn btn-primary" id="btn-new-script">
                             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Create Payload
                         </button>
                     </div>
                 </div>
 
-                <div class="library-grid" id="library-grid">
-                    <!-- Script cards rendered via JS -->
-                </div>
-            </section>
+                <div class="library-grid" id="library-grid"></div>
+            </div>
         </main>
     </div>
 

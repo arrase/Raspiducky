@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -37,13 +38,15 @@ func newLEDState(val uint8) LEDState {
 
 // LEDWatcher monitors `/dev/hidg0` for host LED state updates.
 type LEDWatcher struct {
-	mu         sync.Mutex
-	devicePath string
-	file       *os.File
-	current    uint8
-	listeners  map[chan LEDState]uint8 // channel -> mask
-	stopCh     chan struct{}
-	stopOnce   sync.Once
+	mu          sync.Mutex
+	devicePath  string
+	file        *os.File
+	current     uint8
+	listeners   map[chan LEDState]uint8
+	pathChanged chan struct{}
+	stopCh      chan struct{}
+	stopOnce    sync.Once
+	wg          sync.WaitGroup
 }
 
 // GetState returns current LED lock status.
@@ -85,20 +88,17 @@ func (w *LEDWatcher) Subscribe() (<-chan LEDState, func()) {
 // NewLEDWatcher initializes an LEDWatcher reading from devicePath.
 func NewLEDWatcher(ctx context.Context, devicePath string) *LEDWatcher {
 	w := &LEDWatcher{
-		devicePath: devicePath,
-		listeners:  make(map[chan LEDState]uint8),
-		stopCh:     make(chan struct{}),
+		devicePath:  devicePath,
+		listeners:   make(map[chan LEDState]uint8),
+		pathChanged: make(chan struct{}, 1),
+		stopCh:      make(chan struct{}),
 	}
 
+	w.wg.Add(1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			_ = w.Close()
-		case <-w.stopCh:
-		}
+		defer w.wg.Done()
+		w.readLoop(ctx)
 	}()
-
-	go w.readLoop()
 
 	return w
 }
@@ -113,18 +113,52 @@ func (w *LEDWatcher) DevicePath() string {
 // SetDevicePath updates the target HID device path and closes any currently open descriptor.
 func (w *LEDWatcher) SetDevicePath(path string) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	if w.devicePath == path {
+		w.mu.Unlock()
 		return
 	}
 	w.devicePath = path
-	if w.file != nil {
-		_ = w.file.Close()
-		w.file = nil
+	w.current = 0
+	f := w.file
+	w.file = nil
+	w.mu.Unlock()
+
+	if f != nil {
+		_ = f.SetReadDeadline(time.Now())
+		_ = f.Close()
+	}
+	select {
+	case w.pathChanged <- struct{}{}:
+	default:
 	}
 }
 
-func (w *LEDWatcher) streamFile(f *os.File, buf []byte) bool {
+func (w *LEDWatcher) waitStopOrPathChange(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-w.stopCh:
+			return false
+		case <-w.pathChanged:
+			return true
+		}
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-w.stopCh:
+		return false
+	case <-w.pathChanged:
+		return true
+	case <-timer.C:
+		return true
+	}
+}
+
+func (w *LEDWatcher) streamFile(ctx context.Context, f *os.File, buf []byte) bool {
 	defer func() {
 		w.mu.Lock()
 		if w.file == f {
@@ -135,76 +169,83 @@ func (w *LEDWatcher) streamFile(f *os.File, buf []byte) bool {
 	}()
 
 	for {
-		select {
-		case <-w.stopCh:
-			return false
-		default:
-		}
-
 		n, err := f.Read(buf)
 		for i := 0; i < n; i++ {
 			w.UpdateState(buf[i])
 		}
 		if err != nil {
-			select {
-			case <-w.stopCh:
-				return false
-			case <-time.After(50 * time.Millisecond):
-				return true
+			if errors.Is(err, io.EOF) {
+				return w.waitStopOrPathChange(ctx, 0)
 			}
+			return w.waitStopOrPathChange(ctx, 50*time.Millisecond)
 		}
 	}
 }
 
-func (w *LEDWatcher) readLoop() {
+func (w *LEDWatcher) openCurrentDevice() (*os.File, string, bool) {
+	w.mu.Lock()
+	devPath := w.devicePath
+	select {
+	case <-w.pathChanged:
+	default:
+	}
+	w.mu.Unlock()
+	if devPath == "" {
+		return nil, "", false
+	}
+
+	f, err := os.Open(devPath)
+	if err != nil {
+		return nil, devPath, false
+	}
+
+	w.mu.Lock()
+	select {
+	case <-w.stopCh:
+		w.mu.Unlock()
+		_ = f.Close()
+		return nil, "", false
+	default:
+	}
+	if w.devicePath != devPath {
+		w.mu.Unlock()
+		_ = f.Close()
+		return nil, devPath, true
+	}
+	w.file = f
+	w.mu.Unlock()
+	return f, devPath, true
+}
+
+func (w *LEDWatcher) readLoop(ctx context.Context) {
+	defer w.shutdownListeners()
+
 	buf := make([]byte, 8)
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-w.stopCh:
 			return
 		default:
 		}
 
-		w.mu.Lock()
-		devPath := w.devicePath
-		w.mu.Unlock()
-
-		if devPath == "" {
-			select {
-			case <-w.stopCh:
+		f, devPath, retryNow := w.openCurrentDevice()
+		if f == nil {
+			if retryNow {
+				continue
+			}
+			delay := 200 * time.Millisecond
+			if devPath == "" {
+				delay = 0
+			}
+			if !w.waitStopOrPathChange(ctx, delay) {
 				return
-			case <-time.After(50 * time.Millisecond):
-				continue
 			}
+			continue
 		}
 
-		f, err := os.Open(devPath)
-		if err != nil {
-			select {
-			case <-w.stopCh:
-				return
-			case <-time.After(200 * time.Millisecond):
-				continue
-			}
-		}
-
-		w.mu.Lock()
-		select {
-		case <-w.stopCh:
-			w.mu.Unlock()
-			_ = f.Close()
-			return
-		default:
-			if w.devicePath != devPath {
-				w.mu.Unlock()
-				_ = f.Close()
-				continue
-			}
-			w.file = f
-		}
-		w.mu.Unlock()
-
-		if !w.streamFile(f, buf) {
+		if !w.streamFile(ctx, f, buf) {
 			return
 		}
 	}
@@ -215,8 +256,7 @@ func (w *LEDWatcher) UpdateState(newState uint8) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	prev := w.current
-	changed := prev ^ newState
+	changed := w.current ^ newState
 	w.current = newState
 	state := newLEDState(newState)
 
@@ -230,29 +270,30 @@ func (w *LEDWatcher) UpdateState(newState uint8) {
 	}
 }
 
-// ParseLEDMask converts string filters ("NUM", "CAPS", "SCROLL", "ANY") to bitmasks.
+// ParseLEDMask converts string filters ("NUM", "CAPS", "SCROLL", "ANY", "NUM|SCROLL") to bitmasks.
 func ParseLEDMask(filter string) (uint8, error) {
 	upper := strings.ToUpper(strings.TrimSpace(filter))
-	switch upper {
-	case "NUM", "NUMLOCK":
-		return LEDNumLock, nil
-	case "CAPS", "CAPSLOCK":
-		return LEDCapsLock, nil
-	case "SCROLL", "SCROLLLOCK":
-		return LEDScrollLock, nil
-	case "ANY", "":
+	if upper == "" || upper == "ANY" {
 		return LEDAny, nil
 	}
 
+	tokens := strings.FieldsFunc(upper, func(r rune) bool {
+		return r == '|' || r == ',' || r == '+' || r == ' ' || r == '\t'
+	})
 	var mask uint8
-	if strings.Contains(upper, "NUM") {
-		mask |= LEDNumLock
-	}
-	if strings.Contains(upper, "CAPS") {
-		mask |= LEDCapsLock
-	}
-	if strings.Contains(upper, "SCROLL") {
-		mask |= LEDScrollLock
+	for _, tok := range tokens {
+		switch tok {
+		case "NUM", "NUMLOCK":
+			mask |= LEDNumLock
+		case "CAPS", "CAPSLOCK":
+			mask |= LEDCapsLock
+		case "SCROLL", "SCROLLLOCK":
+			mask |= LEDScrollLock
+		case "ANY":
+			mask |= LEDAny
+		default:
+			return 0, fmt.Errorf("unrecognized LED mask token %q in %q", tok, filter)
+		}
 	}
 	if mask == 0 {
 		return 0, fmt.Errorf("unrecognized LED mask string %q", filter)
@@ -280,9 +321,11 @@ func (w *LEDWatcher) WaitLED(ctx context.Context, mask uint8, timeout time.Durat
 		w.mu.Unlock()
 	}()
 
-	var timeoutChan <-chan time.Time
+	var timeoutCh <-chan time.Time
 	if timeout > 0 {
-		timeoutChan = time.After(timeout)
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		timeoutCh = timer.C
 	}
 
 	select {
@@ -290,7 +333,7 @@ func (w *LEDWatcher) WaitLED(ctx context.Context, mask uint8, timeout time.Durat
 		return LEDState{}, ctx.Err()
 	case <-w.stopCh:
 		return LEDState{}, errors.New("led watcher stopped")
-	case <-timeoutChan:
+	case <-timeoutCh:
 		return LEDState{}, errors.New("timeout waiting for LED state change")
 	case state, ok := <-ch:
 		if !ok {
@@ -300,21 +343,33 @@ func (w *LEDWatcher) WaitLED(ctx context.Context, mask uint8, timeout time.Durat
 	}
 }
 
-// Close stops the LEDWatcher and closes all subscriber channels and open device files.
-func (w *LEDWatcher) Close() error {
-	w.stopOnce.Do(func() {
-		close(w.stopCh)
-	})
+func (w *LEDWatcher) shutdownListeners() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for ch := range w.listeners {
 		delete(w.listeners, ch)
 		close(ch)
 	}
-	if w.file != nil {
-		err := w.file.Close()
-		w.file = nil
-		return err
+}
+
+// Close stops the LEDWatcher and closes all subscriber channels and open device files.
+func (w *LEDWatcher) Close() error {
+	w.stopOnce.Do(func() {
+		close(w.stopCh)
+	})
+
+	w.mu.Lock()
+	f := w.file
+	w.file = nil
+	w.mu.Unlock()
+
+	var closeErr error
+	if f != nil {
+		_ = f.SetReadDeadline(time.Now())
+		closeErr = f.Close()
 	}
-	return nil
+
+	w.shutdownListeners()
+	w.wg.Wait()
+	return closeErr
 }

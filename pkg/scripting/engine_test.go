@@ -3,13 +3,14 @@ package scripting
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
-func TestScriptEngine_MouseClickAndMoveClamping(t *testing.T) {
+func TestScriptEngine_MouseClickAndMultiStepMove(t *testing.T) {
 	var mouseBuf bytes.Buffer
 	mouse := hid.NewMouse("")
 	mouse.SetWriter(&mouseBuf)
@@ -39,25 +40,64 @@ mouseClick();
 	}
 
 	data := mouseBuf.Bytes()
-	// 1st report (6 bytes): Move(127, -127)
-	// 2nd report (6 bytes): MoveTo(0, 32767)
-	// 3rd report (6 bytes): ButtonDown("left")
-	// 4th report (6 bytes): ButtonUp("left")
-	if len(data) != 24 {
-		t.Fatalf("expected 24 bytes of mouse reports, got %d", len(data))
+	// MoveContext(200, -300) -> 3 reports: (127,-127), (73,-127), (0,-46) = 18 bytes
+	// MoveTo(0, 32767) -> 1 report = 6 bytes
+	// Click("left") -> 2 reports = 12 bytes
+	// Total = 36 bytes
+	if len(data) != 36 {
+		t.Fatalf("expected 36 bytes of mouse reports, got %d", len(data))
 	}
 
-	if int8(data[2]) != 127 || int8(data[3]) != -127 {
-		t.Errorf("expected clamped move (127, -127), got (%d, %d)", int8(data[2]), int8(data[3]))
+	if int8(data[2]) != 127 || int8(data[8]) != 73 || int8(data[14]) != 0 {
+		t.Errorf("unexpected multi-step X deltas: %d, %d, %d", int8(data[2]), int8(data[8]), int8(data[14]))
 	}
-	if data[6] != 0x02 || data[8] != 0 || data[9] != 0 || data[10] != 0xff || data[11] != 0x7f {
-		t.Errorf("expected clamped MoveTo (0, 32767), got report %v", data[6:12])
+	if int8(data[3]) != -127 || int8(data[9]) != -127 || int8(data[15]) != -46 {
+		t.Errorf("unexpected multi-step Y deltas: %d, %d, %d", int8(data[3]), int8(data[9]), int8(data[15]))
 	}
-	if data[12+1] != hid.MouseButtonLeft {
-		t.Errorf("expected default mouseClick() to press left button (0x01), got 0x%02x", data[12+1])
+	if data[18] != 0x02 || data[20] != 0 || data[21] != 0 || data[22] != 0xff || data[23] != 0x7f {
+		t.Errorf("expected clamped MoveTo (0, 32767), got report %v", data[18:24])
 	}
-	if data[18+1] != 0x00 {
-		t.Errorf("expected mouseClick() release report to have buttons 0x00, got 0x%02x", data[18+1])
+	if data[24+1] != hid.MouseButtonLeft {
+		t.Errorf("expected default mouseClick() to press left button (0x01), got 0x%02x", data[24+1])
+	}
+	if data[30+1] != 0x00 {
+		t.Errorf("expected mouseClick() release report to have buttons 0x00, got 0x%02x", data[30+1])
+	}
+}
+
+func TestScriptEngine_UncatchableCancelAndAutoKeyRelease(t *testing.T) {
+	var kbdBuf bytes.Buffer
+	kbd, _ := hid.NewKeyboard("", "US")
+	kbd.SetWriter(&kbdBuf)
+	kbd.SetTypingSpeed(0, 0)
+
+	engine := NewScriptEngine(kbd, nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+
+	// Even when JS wraps delay() inside an infinite try/catch loop while holding SHIFT,
+	// cancellation must interrupt the VM and release held SHIFT automatically.
+	js := `
+hold("SHIFT");
+while (true) {
+	try {
+		delay(20);
+	} catch (e) {}
+}
+`
+	err := engine.RunJS(ctx, js, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded on cancelled infinite JS loop, got %v", err)
+	}
+
+	data := kbdBuf.Bytes()
+	if len(data) < 16 {
+		t.Fatalf("expected hold report + automatic release report, got %d bytes", len(data))
+	}
+	lastReport := data[len(data)-8:]
+	if lastReport[0] != 0 || lastReport[2] != 0 {
+		t.Errorf("expected held SHIFT to be released on script abort, got trailing report %v", lastReport)
 	}
 }
 
@@ -107,26 +147,19 @@ func TestScriptEngine_DuckyScriptMinusKeyAndTrailingSpace(t *testing.T) {
 	}
 
 	data := kbdBuf.Bytes()
-	// 1st action ("-"): press + release = 16B
-	// 2nd action ("CTRL -"): mod + mod+key + release = 24B
-	// 3rd action ("STRING  "): press + release = 16B
-	// Total = 56 bytes
 	if len(data) != 56 {
 		t.Fatalf("expected 56 bytes of keyboard reports, got %d", len(data))
 	}
 
-	// 1st press: "-" -> KeyMinus, no modifiers
 	if data[0] != 0 || data[2] != hid.KeyMinus {
 		t.Errorf("expected '-' report (mod=0, key=KeyMinus), got (mod=0x%02x, key=0x%02x)", data[0], data[2])
 	}
-	// 2nd press (offset 16): "CTRL -" -> modifier report first, then ModLeftCtrl + KeyMinus
 	if data[16] != hid.ModLeftCtrl || data[18] != 0 {
 		t.Errorf("expected 'CTRL -' modifier report (mod=ModLeftCtrl, key=0), got (mod=0x%02x, key=0x%02x)", data[16], data[18])
 	}
 	if data[24] != hid.ModLeftCtrl || data[26] != hid.KeyMinus {
 		t.Errorf("expected 'CTRL -' combo report (mod=ModLeftCtrl, key=KeyMinus), got (mod=0x%02x, key=0x%02x)", data[24], data[26])
 	}
-	// 3rd press (offset 40): "STRING  " -> KeySpace
 	if data[40] != 0 || data[42] != hid.KeySpace {
 		t.Errorf("expected 'STRING  ' report (mod=0, key=KeySpace), got (mod=0x%02x, key=0x%02x)", data[40], data[42])
 	}
@@ -150,7 +183,6 @@ func TestScriptEngine_DuckyScriptQuotes(t *testing.T) {
 	}
 
 	data := kbdBuf.Bytes()
-	// 6 characters, each writes press (8 bytes) + release (8 bytes) = 96 bytes total
 	if len(data) != 96 {
 		t.Fatalf("expected 96 bytes of keyboard reports, got %d", len(data))
 	}
@@ -183,10 +215,6 @@ func TestScriptEngine_DuckyScriptHoldAndRelease(t *testing.T) {
 	}
 
 	data := kbdBuf.Bytes()
-	// 1st report (8B): HOLD SHIFT -> (ModLeftShift, 0)
-	// 2nd report (8B): DOWNARROW press -> (ModLeftShift, KeyDown)
-	// 3rd report (8B): DOWNARROW release -> (ModLeftShift, 0)
-	// 4th report (8B): RELEASE SHIFT -> (0, 0)
 	if len(data) != 32 {
 		t.Fatalf("expected 32 bytes of keyboard reports, got %d", len(data))
 	}
@@ -202,5 +230,60 @@ func TestScriptEngine_DuckyScriptHoldAndRelease(t *testing.T) {
 	}
 	if data[24] != 0 || data[26] != 0 {
 		t.Errorf("expected RELEASE SHIFT report (0, 0), got (0x%02x, 0x%02x)", data[24], data[26])
+	}
+}
+
+func TestScriptEngine_RunAndAllDuckyInstructions(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var kbdBuf, mouseBuf, logBuf bytes.Buffer
+	kbd, _ := hid.NewKeyboard("", "US")
+	kbd.SetWriter(&kbdBuf)
+	mouse := hid.NewMouse("")
+	mouse.SetWriter(&mouseBuf)
+	ledWatcher := hid.NewLEDWatcher(ctx, "")
+	defer func() { _ = ledWatcher.Close() }()
+
+	go func() {
+		time.Sleep(25 * time.Millisecond)
+		ledWatcher.UpdateState(hid.LEDNumLock)
+	}()
+
+	engine := NewScriptEngine(kbd, mouse, ledWatcher)
+
+	ducky := `WAIT_LED NUM 500
+DEFAULT_DELAY 1
+LAYOUT ES
+TYPING_SPEED 0 0
+DELAY 1
+STRINGLN ñ
+MOUSE_MOVE 10 -10
+MOUSE_MOVETO 100 200
+MOUSE_CLICK right
+`
+	if err := engine.Run(ctx, "", "all_ops.ducky", ducky, &logBuf); err != nil {
+		t.Fatalf("engine.Run ducky failed: %v", err)
+	}
+	if kbd.GetLayout() != "ES" {
+		t.Errorf("expected layout ES after LAYOUT ES, got %s", kbd.GetLayout())
+	}
+	if mouseBuf.Len() == 0 {
+		t.Errorf("expected mouse reports from DuckyScript mouse commands")
+	}
+
+	js := `
+layout("DE");
+typingSpeed(2, 1);
+log("ready");
+`
+	if err := engine.Run(ctx, "", "config.js", js, &logBuf); err != nil {
+		t.Fatalf("engine.Run js failed: %v", err)
+	}
+	if kbd.GetLayout() != "DE" {
+		t.Errorf("expected layout DE after JS layout('DE'), got %s", kbd.GetLayout())
+	}
+	if got := logBuf.String(); got != "ready\n" {
+		t.Errorf("expected log 'ready\\n', got %q", got)
 	}
 }

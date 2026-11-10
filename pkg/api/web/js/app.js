@@ -1,6 +1,6 @@
 /**
  * Raspiducky Core Web Application Logic
- * Global State, Navigation, WebSocket Client & System Events
+ * Global State, Tablist Navigation, WebSocket Client & API Helper
  */
 
 const state = {
@@ -8,40 +8,89 @@ const state = {
     ws: null,
     wsConnected: false,
     wsReconnectAttempts: 0,
+    wsReconnectTimer: null,
     gadget: {
         deployed: false,
         activeFunctions: [],
         udc: '',
         maxEndpoints: 0,
+        endpointCosts: {},
         config: {}
     },
     scripts: [],
+    editorDelayDirty: false,
     lastTerminalJobId: null,
     jobStartTime: null,
-    jobTimerInterval: null,
-    wsReconnectTimer: null
+    jobTimerInterval: null
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+    initTabs();
+    initGadgetControls();
+    initEditorControls();
     initWebSocket();
-    updateLineNumbers();
-    await Promise.all([loadGadgetStatus(), loadScriptsLibrary()]);
+    await Promise.all([loadGadgetStatus(), loadScriptsLibrary(), syncJobStatus()]);
 });
 
-// Tab Switching
+function initTabs() {
+    const tablist = document.querySelector('[role="tablist"]');
+    const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+    const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+
+    for (const tab of tabs) {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    }
+
+    tablist.addEventListener('keydown', (event) => {
+        const currentIndex = tabs.indexOf(document.activeElement);
+        if (currentIndex === -1) return;
+
+        let nextIndex = -1;
+        if (event.key === 'ArrowRight') {
+            nextIndex = (currentIndex + 1) % tabs.length;
+        } else if (event.key === 'ArrowLeft') {
+            nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        } else if (event.key === 'Home') {
+            nextIndex = 0;
+        } else if (event.key === 'End') {
+            nextIndex = tabs.length - 1;
+        }
+
+        if (nextIndex !== -1) {
+            event.preventDefault();
+            tabs[nextIndex].focus();
+            switchTab(tabs[nextIndex].dataset.tab);
+        }
+    });
+
+    for (const panel of panels) {
+        panel.addEventListener('beforematch', () => switchTab(panel.dataset.tab));
+    }
+}
+
 function switchTab(tabId) {
     state.activeTab = tabId;
 
-    // Update nav tab buttons
-    document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
-    document.getElementById(`tab-btn-${tabId}`).classList.add('active');
+    const tabs = document.querySelectorAll('[role="tab"]');
+    for (const tab of tabs) {
+        const selected = tab.dataset.tab === tabId;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        if (selected) {
+            tab.scrollIntoView({ block: 'nearest', inline: 'nearest', container: 'nearest' });
+        }
+    }
 
-    // Update tab content views
-    document.querySelectorAll('.tab-content').forEach(view => view.classList.remove('active'));
-    document.getElementById(`view-${tabId}`).classList.add('active');
+    const panels = document.querySelectorAll('[role="tabpanel"]');
+    for (const panel of panels) {
+        if (panel.dataset.tab === tabId) {
+            panel.hidden = false;
+        } else {
+            panel.hidden = 'until-found';
+        }
+    }
 }
 
-// WebSocket Connection Manager
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/api/ws`;
@@ -64,7 +113,8 @@ function initWebSocket() {
             state.wsConnected = true;
             state.wsReconnectAttempts = 0;
             updateWSStatus('connected');
-            appendLog('INFO', 'SYS', 'WebSocket Connection Established.');
+            appendLog('INFO', 'SYS', 'WebSocket connection established.');
+            syncJobStatus();
         };
 
         state.ws.onmessage = (event) => {
@@ -82,8 +132,7 @@ function initWebSocket() {
             scheduleWSReconnect();
         };
 
-        state.ws.onerror = (err) => {
-            console.warn('WebSocket error:', err);
+        state.ws.onerror = () => {
             state.wsConnected = false;
             updateWSStatus('disconnected');
         };
@@ -118,7 +167,6 @@ function updateWSStatus(status) {
     }
 }
 
-// Handle Incoming WebSocket Messages
 function handleWSMessage(msg) {
     switch (msg.type) {
         case 'log':
@@ -134,31 +182,33 @@ function handleWSMessage(msg) {
             updateJobStatusUI(msg.payload);
             break;
         default:
-            console.log('Unhandled WS message type:', msg.type, msg);
+            break;
     }
 }
 
-// LED Indicators Update
 function updateLEDIndicators(leds) {
     document.getElementById('led-num').classList.toggle('active', Boolean(leds.numLock));
     document.getElementById('led-caps').classList.toggle('active', Boolean(leds.capsLock));
     document.getElementById('led-scroll').classList.toggle('active', Boolean(leds.scrollLock));
 }
 
-// API Utility Helper
 async function apiCall(endpoint, method = 'GET', data = null) {
     const options = {
         method,
         headers: { 'Content-Type': 'application/json' }
     };
-    if (data) options.body = JSON.stringify(data);
+    if (data !== null) {
+        options.body = JSON.stringify(data);
+    }
 
     const response = await fetch(endpoint, options);
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`API ${method} ${endpoint} failed (${response.status}): ${errText}`);
+        throw new Error(`API ${method} ${endpoint} failed (${response.status}): ${errText.trim()}`);
     }
-    
-    if (response.status === 204) return null;
+
+    if (response.status === 204) {
+        return null;
+    }
     return await response.json();
 }

@@ -69,6 +69,20 @@ func TestDeploy_FullCompositeAndRedeployTeardown(t *testing.T) {
 		t.Fatalf("expected mass storage lun.0/file='/tmp/disk.img', got %q (err=%v)", string(data), err)
 	}
 
+	// Verify HID keyboard (Boot Keyboard, no_out_endpoint=1) and HID mouse (Report-only, no_out_endpoint=1)
+	kbdFuncDir := filepath.Join(gadgetPath, "functions", FuncKeyboard)
+	for name, want := range map[string]string{"subclass": "1", "protocol": "1", "report_length": "8", "no_out_endpoint": "1"} {
+		if got, err := os.ReadFile(filepath.Join(kbdFuncDir, name)); err != nil || string(got) != want {
+			t.Errorf("hid.usb0/%s = %q (err=%v), want %q", name, string(got), err, want)
+		}
+	}
+	mouseFuncDir := filepath.Join(gadgetPath, "functions", FuncMouse)
+	for name, want := range map[string]string{"subclass": "0", "protocol": "0", "report_length": "6", "no_out_endpoint": "1"} {
+		if got, err := os.ReadFile(filepath.Join(mouseFuncDir, name)); err != nil || string(got) != want {
+			t.Errorf("hid.usb1/%s = %q (err=%v), want %q", name, string(got), err, want)
+		}
+	}
+
 	// Redeploy with a minimal keyboard-only configuration to verify full teardown of RNDIS & Mass Storage
 	cfg2 := validTestConfig()
 	cfg2.Mouse = false
@@ -227,6 +241,14 @@ func TestConfig_CountEndpoints(t *testing.T) {
 	// EP0(1) + Keyboard(1) + Mouse(1) + MassStorage(2) + RNDIS(3) = 8
 	if got := cfg.CountEndpoints(); got != 8 {
 		t.Errorf("expected CountEndpoints()=8, got %d", got)
+	}
+
+	costs := EndpointCosts()
+	if _, exists := costs["ethernet"]; exists {
+		t.Errorf("unexpected obsolete 'ethernet' key in EndpointCosts: %v", costs)
+	}
+	if len(costs) != 7 {
+		t.Errorf("expected 7 entries in EndpointCosts, got %d (%v)", len(costs), costs)
 	}
 }
 

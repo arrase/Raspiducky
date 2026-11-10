@@ -3,6 +3,8 @@ package api
 import (
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,13 +13,29 @@ import (
 
 const (
 	wsWriteTimeout  = 5 * time.Second
+	wsPongWait      = 60 * time.Second
+	wsPingPeriod    = 45 * time.Second
+	wsMaxMessageLen = 64 * 1024
 	wsClientBufSize = 64
 )
 
+func isSameOriginRequest(r *http.Request) bool {
+	if secSite := r.Header.Get("Sec-Fetch-Site"); secSite != "" && secSite != "same-origin" && secSite != "none" {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
+}
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(_ *http.Request) bool {
-		return true // Allow connections from web dashboard
-	},
+	CheckOrigin: isSameOriginRequest,
 }
 
 type wsClient struct {
@@ -34,6 +52,7 @@ type Hub struct {
 	unregister chan *wsClient
 	stopCh     chan struct{}
 	closeOnce  sync.Once
+	wg         sync.WaitGroup
 }
 
 // NewHub creates a new WebSocket hub.
@@ -59,8 +78,15 @@ func (h *Hub) removeClient(client *wsClient) {
 	_ = client.conn.Close()
 }
 
-// Run starts the event loop for broadcasting messages to WebSocket clients.
-func (h *Hub) Run() {
+// Start launches the Hub event loop in a tracked background goroutine.
+func (h *Hub) Start() {
+	h.wg.Add(1)
+	go h.run()
+}
+
+func (h *Hub) run() {
+	defer h.wg.Done()
+
 	for {
 		select {
 		case <-h.stopCh:
@@ -97,6 +123,7 @@ func (h *Hub) Close() {
 	h.closeOnce.Do(func() {
 		close(h.stopCh)
 	})
+	h.wg.Wait()
 }
 
 // Broadcast dispatches a message to all connected WebSocket clients.
@@ -119,11 +146,66 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, 
 	return conn, nil
 }
 
-// Register registers an upgraded WebSocket connection with the Hub and starts its read/write loops.
-func (h *Hub) Register(conn *websocket.Conn) {
+func writePump(client *wsClient) {
+	ticker := time.NewTicker(wsPingPeriod)
+	defer func() {
+		ticker.Stop()
+		_ = client.conn.Close()
+	}()
+
+	for {
+		select {
+		case msg, ok := <-client.send:
+			if !ok {
+				return
+			}
+			_ = client.conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := client.conn.WriteJSON(msg); err != nil {
+				log.Printf("[WebSocket] Error writing to client %s: %v", client.conn.RemoteAddr(), err)
+				return
+			}
+		case <-ticker.C:
+			_ = client.conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := client.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func (h *Hub) readPump(client *wsClient) {
+	defer func() {
+		select {
+		case h.unregister <- client:
+		case <-h.stopCh:
+		}
+	}()
+
+	client.conn.SetReadLimit(wsMaxMessageLen)
+	_ = client.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	client.conn.SetPongHandler(func(string) error {
+		_ = client.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		return nil
+	})
+
+	for {
+		if _, _, err := client.conn.ReadMessage(); err != nil {
+			break
+		}
+	}
+}
+
+// Register registers an upgraded WebSocket connection with initial snapshot messages queued before live broadcasts.
+func (h *Hub) Register(conn *websocket.Conn, initial ...WSMessage) {
 	client := &wsClient{
 		conn: conn,
 		send: make(chan WSMessage, wsClientBufSize),
+	}
+	for _, msg := range initial {
+		select {
+		case client.send <- msg:
+		default:
+		}
 	}
 
 	select {
@@ -133,31 +215,6 @@ func (h *Hub) Register(conn *websocket.Conn) {
 	case h.register <- client:
 	}
 
-	go func() {
-		defer func() {
-			_ = conn.Close()
-		}()
-		for msg := range client.send {
-			_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-			if err := conn.WriteJSON(msg); err != nil {
-				log.Printf("[WebSocket] Error writing to client %s: %v", conn.RemoteAddr(), err)
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer func() {
-			select {
-			case h.unregister <- client:
-			case <-h.stopCh:
-			}
-		}()
-
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
-				break
-			}
-		}
-	}()
+	go writePump(client)
+	go h.readPump(client)
 }

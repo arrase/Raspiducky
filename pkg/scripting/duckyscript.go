@@ -1,12 +1,14 @@
-// Package scripting provides the DuckyScript parser and Goja JavaScript execution engine.
+// Package scripting provides the DuckyScript compiler and Goja JavaScript execution engine.
 package scripting
 
 import (
-	"bufio"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/arrase/Raspiducky/pkg/hid"
 )
 
 // Supported payload script types.
@@ -14,6 +16,36 @@ const (
 	TypeDuckyScript = "duckyscript"
 	TypeJavaScript  = "javascript"
 )
+
+// OpKind identifies the compiled DuckyScript instruction type.
+type OpKind uint8
+
+// Compiled DuckyScript instruction kinds.
+const (
+	OpDelay OpKind = iota + 1
+	OpTypeString
+	OpPress
+	OpHold
+	OpRelease
+	OpLayout
+	OpTypingSpeed
+	OpMouseMove
+	OpMouseMoveTo
+	OpMouseClick
+	OpWaitLED
+)
+
+// Instruction represents a validated, executable DuckyScript operation.
+type Instruction struct {
+	Kind      OpKind
+	Line      int
+	Text      string
+	Int1      int
+	Int2      int
+	LEDMask   uint8
+	Timeout   time.Duration
+	PostDelay int
+}
 
 // DetectScriptType returns TypeJavaScript or TypeDuckyScript from an explicit type string or filename extension.
 func DetectScriptType(scriptType, fileName string) string {
@@ -30,123 +62,195 @@ func DetectScriptType(scriptType, fileName string) string {
 	return TypeDuckyScript
 }
 
-// ParseDuckyScript parses Rubber Ducky script syntax into equivalent JavaScript code.
-func ParseDuckyScript(duckySource string) (string, error) {
-	scanner := bufio.NewScanner(strings.NewReader(duckySource))
-	var jsLines []string
+func normalizeLines(source string) []string {
+	clean := strings.TrimPrefix(source, "\ufeff")
+	clean = strings.ReplaceAll(clean, "\r\n", "\n")
+	clean = strings.ReplaceAll(clean, "\r", "\n")
+	return strings.Split(clean, "\n")
+}
 
+// CompileDuckyScript validates and compiles DuckyScript 1.0/2.0/3.0 source into executable instructions.
+func CompileDuckyScript(duckySource, initialLayout string) ([]Instruction, error) {
+	if initialLayout == "" {
+		initialLayout = "US"
+	}
+	activeLayout, err := hid.GetLayout(initialLayout)
+	if err != nil {
+		activeLayout, _ = hid.GetLayout("US")
+	}
+
+	lines := normalizeLines(duckySource)
+	var program []Instruction
 	defaultDelay := 0
-	var lastJSCommand string
-	lastAppliesDelay := false
-	lineNum := 0
+	var lastRepeatable *Instruction
 
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimLeft(strings.TrimRight(scanner.Text(), "\r\n"), " \t")
-		if line == "" {
+	for idx := 0; idx < len(lines); idx++ {
+		lineNum := idx + 1
+		trimmed := strings.TrimLeft(lines[idx], " \t")
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 			continue
 		}
 
-		cmd, arg := splitCommandLine(line)
+		cmd, arg, hasArg := splitCommandLine(trimmed)
 
 		switch cmd {
 		case "REM":
-			jsLines = append(jsLines, fmt.Sprintf("// %s", strings.TrimSpace(arg)))
+			continue
+
+		case "REM_BLOCK":
+			endIdx, ok := consumeUntil(lines, idx+1, "END_REM")
+			if !ok {
+				return nil, fmt.Errorf("line %d: unclosed REM_BLOCK (missing END_REM)", lineNum)
+			}
+			idx = endIdx
+			continue
+
+		case "ATTACKMODE":
 			continue
 
 		case "DEFAULT_DELAY", "DEFAULTDELAY":
-			delayVal, err := parseDelayArg(lineNum, cmd, arg)
+			val, err := parseNonNegIntArg(lineNum, cmd, arg)
 			if err != nil {
-				return "", err
+				return nil, err
 			}
-			defaultDelay = delayVal
-			jsLines = append(jsLines, fmt.Sprintf("// Default delay set to %d ms", delayVal))
+			defaultDelay = val
 			continue
 
 		case "DELAY":
-			ms, err := parseDelayArg(lineNum, cmd, arg)
+			ms, err := parseNonNegIntArg(lineNum, cmd, arg)
 			if err != nil {
-				return "", err
+				return nil, err
 			}
-			jsCmd := fmt.Sprintf("delay(%d);", ms)
-			jsLines = append(jsLines, jsCmd)
-			lastJSCommand = jsCmd
-			lastAppliesDelay = false
+			inst := Instruction{Kind: OpDelay, Line: lineNum, Int1: ms}
+			program = append(program, inst)
+			cp := inst
+			lastRepeatable = &cp
 			continue
 
 		case "REPEAT":
-			repeatJS, err := parseRepeatCommand(lineNum, arg, lastJSCommand, defaultDelay, lastAppliesDelay)
+			repeated, err := buildRepeatInstructions(lineNum, arg, lastRepeatable)
 			if err != nil {
-				return "", err
+				return nil, err
 			}
-			jsLines = append(jsLines, repeatJS)
+			program = append(program, repeated...)
+			continue
+
+		case "STRING", "STRINGLN":
+			inst, nextIdx, err := parseStringInstruction(lines, idx, lineNum, cmd, arg, hasArg, defaultDelay)
+			if err != nil {
+				return nil, err
+			}
+			idx = nextIdx
+			program = append(program, inst)
+			cp := inst
+			lastRepeatable = &cp
 			continue
 		}
 
-		jsCmd, appliesDelay, err := translateCommandToJS(lineNum, cmd, arg, line, defaultDelay)
+		inst, repeatable, nextLayout, err := compileSingleLineCommand(lineNum, cmd, arg, trimmed, defaultDelay, activeLayout)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		jsLines = append(jsLines, jsCmd)
-		if appliesDelay {
-			if defaultDelay > 0 {
-				jsLines = append(jsLines, fmt.Sprintf("delay(%d);", defaultDelay))
-			}
-			lastJSCommand = jsCmd
-			lastAppliesDelay = true
+		if nextLayout != nil {
+			activeLayout = nextLayout
+		}
+		program = append(program, inst)
+		if repeatable {
+			cp := inst
+			lastRepeatable = &cp
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("error reading duckyscript: %w", err)
-	}
-
-	return strings.Join(jsLines, "\n"), nil
+	return program, nil
 }
 
-func splitCommandLine(line string) (string, string) {
+func splitCommandLine(line string) (string, string, bool) {
 	idx := strings.IndexAny(line, " \t")
 	if idx == -1 {
-		return strings.ToUpper(line), ""
+		return strings.ToUpper(line), "", false
 	}
-	return strings.ToUpper(line[:idx]), line[idx+1:]
+	return strings.ToUpper(line[:idx]), line[idx+1:], true
 }
 
-func parseDelayArg(lineNum int, cmd, arg string) (int, error) {
+func consumeUntil(lines []string, startIdx int, endToken string) (int, bool) {
+	for i := startIdx; i < len(lines); i++ {
+		if strings.EqualFold(strings.TrimSpace(lines[i]), endToken) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func parseStringInstruction(lines []string, idx, lineNum int, cmd, arg string, hasArg bool, defaultDelay int) (Instruction, int, error) {
+	if hasArg {
+		text := arg
+		if cmd == "STRINGLN" {
+			text += "\n"
+		}
+		return Instruction{Kind: OpTypeString, Line: lineNum, Text: text, PostDelay: defaultDelay}, idx, nil
+	}
+
+	endToken := "END_STRING"
+	if cmd == "STRINGLN" {
+		endToken = "END_STRINGLN"
+	}
+	endIdx := -1
+	for i := idx + 1; i < len(lines); i++ {
+		tok := strings.ToUpper(strings.TrimSpace(lines[i]))
+		if tok == endToken || (cmd == "STRINGLN" && tok == "END_STRING") {
+			endIdx = i
+			break
+		}
+	}
+	if endIdx == -1 {
+		return Instruction{}, idx, fmt.Errorf("line %d: unclosed %s block (missing %s)", lineNum, cmd, endToken)
+	}
+
+	block := strings.Join(lines[idx+1:endIdx], "\n")
+	if cmd == "STRINGLN" {
+		block += "\n"
+	}
+	return Instruction{Kind: OpTypeString, Line: lineNum, Text: block, PostDelay: defaultDelay}, endIdx, nil
+}
+
+func parseNonNegIntArg(lineNum int, cmd, arg string) (int, error) {
 	fields := strings.Fields(arg)
 	if len(fields) == 0 {
-		return 0, fmt.Errorf("line %d: %s requires a delay argument", lineNum, cmd)
+		return 0, fmt.Errorf("line %d: %s requires a numeric argument", lineNum, cmd)
 	}
 	if len(fields) > 1 {
 		return 0, fmt.Errorf("line %d: invalid %s value %q", lineNum, cmd, strings.TrimSpace(arg))
 	}
-	delayVal, err := strconv.Atoi(fields[0])
-	if err != nil || delayVal < 0 {
+	val, err := strconv.Atoi(fields[0])
+	if err != nil || val < 0 {
 		return 0, fmt.Errorf("line %d: invalid %s value %q", lineNum, cmd, fields[0])
 	}
-	return delayVal, nil
+	return val, nil
 }
 
-func parseRepeatCommand(lineNum int, arg, lastJSCommand string, defaultDelay int, appliesDelay bool) (string, error) {
-	if lastJSCommand == "" {
-		return "", fmt.Errorf("line %d: REPEAT has no preceding command to repeat", lineNum)
+func buildRepeatInstructions(lineNum int, arg string, prev *Instruction) ([]Instruction, error) {
+	if prev == nil {
+		return nil, fmt.Errorf("line %d: REPEAT has no preceding command to repeat", lineNum)
 	}
 	fields := strings.Fields(arg)
 	if len(fields) == 0 {
-		return "", fmt.Errorf("line %d: REPEAT requires a count argument", lineNum)
+		return nil, fmt.Errorf("line %d: REPEAT requires a count argument", lineNum)
 	}
 	if len(fields) > 1 {
-		return "", fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, strings.TrimSpace(arg))
+		return nil, fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, strings.TrimSpace(arg))
 	}
 	count, err := strconv.Atoi(fields[0])
 	if err != nil || count <= 0 {
-		return "", fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, fields[0])
+		return nil, fmt.Errorf("line %d: invalid REPEAT count %q", lineNum, fields[0])
 	}
-	body := lastJSCommand
-	if appliesDelay && defaultDelay > 0 {
-		body = fmt.Sprintf("%s delay(%d);", lastJSCommand, defaultDelay)
+
+	out := make([]Instruction, count)
+	for i := range count {
+		inst := *prev
+		inst.Line = lineNum
+		out[i] = inst
 	}
-	return fmt.Sprintf("for (let _i = 0; _i < %d; _i++) { %s }", count, body), nil
+	return out, nil
 }
 
 func parseCoordinates(lineNum int, cmd, arg string) (int, int, error) {
@@ -165,136 +269,133 @@ func parseCoordinates(lineNum int, cmd, arg string) (int, int, error) {
 	return x, y, nil
 }
 
-func translateMouseCommand(lineNum int, cmd, arg string) (string, bool, error) {
+func compileMouseInstruction(lineNum int, cmd, arg string, defaultDelay int) (Instruction, bool, error) {
 	switch cmd {
 	case "MOUSE_MOVE":
 		x, y, err := parseCoordinates(lineNum, cmd, arg)
 		if err != nil {
-			return "", false, err
+			return Instruction{}, false, err
 		}
-		return fmt.Sprintf("mouseMove(%d, %d);", x, y), true, nil
+		return Instruction{Kind: OpMouseMove, Line: lineNum, Int1: x, Int2: y, PostDelay: defaultDelay}, true, nil
+
 	case "MOUSE_MOVE_ABS", "MOUSE_MOVETO":
 		x, y, err := parseCoordinates(lineNum, cmd, arg)
 		if err != nil {
-			return "", false, err
+			return Instruction{}, false, err
 		}
-		return fmt.Sprintf("mouseMoveTo(%d, %d);", x, y), true, nil
+		return Instruction{Kind: OpMouseMoveTo, Line: lineNum, Int1: x, Int2: y, PostDelay: defaultDelay}, true, nil
+
 	case "MOUSE_CLICK":
-		btn := strings.TrimSpace(arg)
+		btn := strings.ToLower(strings.TrimSpace(arg))
+		switch btn {
+		case "", "left", "1", "b1", "button1", "right", "2", "b2", "button2", "middle", "3", "b3", "button3":
+		default:
+			return Instruction{}, false, fmt.Errorf("line %d: invalid MOUSE_CLICK button %q", lineNum, arg)
+		}
 		if btn == "" {
 			btn = "left"
 		}
-		return fmt.Sprintf("mouseClick(%s);", strconv.Quote(btn)), true, nil
+		return Instruction{Kind: OpMouseClick, Line: lineNum, Text: btn, PostDelay: defaultDelay}, true, nil
+
 	default:
-		return "", false, nil
+		return Instruction{}, false, nil
 	}
 }
 
-func parseTypingSpeed(lineNum int, arg string) (string, error) {
+func compileTypingSpeedInstruction(lineNum int, cmd, arg string) (Instruction, error) {
 	f := strings.Fields(arg)
 	if len(f) == 0 || len(f) > 2 {
-		return "", fmt.Errorf("line %d: TYPING_SPEED requires 1 or 2 integer arguments", lineNum)
+		return Instruction{}, fmt.Errorf("line %d: %s requires 1 or 2 integer arguments", lineNum, cmd)
 	}
 	d, err := strconv.Atoi(f[0])
 	if err != nil || d < 0 {
-		return "", fmt.Errorf("line %d: invalid TYPING_SPEED delay %q", lineNum, f[0])
+		return Instruction{}, fmt.Errorf("line %d: invalid %s delay %q", lineNum, cmd, f[0])
 	}
 	j := 0
 	if len(f) == 2 {
 		j, err = strconv.Atoi(f[1])
 		if err != nil || j < 0 {
-			return "", fmt.Errorf("line %d: invalid TYPING_SPEED jitter %q", lineNum, f[1])
+			return Instruction{}, fmt.Errorf("line %d: invalid %s jitter %q", lineNum, cmd, f[1])
 		}
 	}
-	return fmt.Sprintf("typingSpeed(%d, %d);", d, j), nil
+	return Instruction{Kind: OpTypingSpeed, Line: lineNum, Int1: d, Int2: j}, nil
 }
 
-func parseWaitLED(lineNum int, arg string) (string, error) {
+func compileWaitLEDInstruction(lineNum int, arg string, defaultDelay int) (Instruction, error) {
 	f := strings.Fields(arg)
 	if len(f) > 2 {
-		return "", fmt.Errorf("line %d: invalid WAIT_LED arguments %q", lineNum, strings.TrimSpace(arg))
+		return Instruction{}, fmt.Errorf("line %d: invalid WAIT_LED arguments %q", lineNum, strings.TrimSpace(arg))
 	}
 	filter := "ANY"
-	timeout := 5000
+	timeoutMs := 5000
 	if len(f) >= 1 {
 		filter = f[0]
 	}
+	mask, err := hid.ParseLEDMask(filter)
+	if err != nil {
+		return Instruction{}, fmt.Errorf("line %d: %w", lineNum, err)
+	}
 	if len(f) == 2 {
-		var err error
-		timeout, err = strconv.Atoi(f[1])
-		if err != nil || timeout <= 0 {
-			return "", fmt.Errorf("line %d: invalid WAIT_LED timeout %q", lineNum, f[1])
+		timeoutMs, err = strconv.Atoi(f[1])
+		if err != nil || timeoutMs <= 0 {
+			return Instruction{}, fmt.Errorf("line %d: invalid WAIT_LED timeout %q", lineNum, f[1])
 		}
 	}
-	return fmt.Sprintf("waitLED(%s, %d);", strconv.Quote(filter), timeout), nil
+	return Instruction{
+		Kind:      OpWaitLED,
+		Line:      lineNum,
+		LEDMask:   mask,
+		Timeout:   time.Duration(timeoutMs) * time.Millisecond,
+		PostDelay: defaultDelay,
+	}, nil
 }
 
-func translateCommandToJS(lineNum int, cmd, arg, line string, defaultDelay int) (string, bool, error) {
-	if js, ok, err := translateMouseCommand(lineNum, cmd, arg); ok || err != nil {
-		return js, true, err
+func compileSingleLineCommand(lineNum int, cmd, arg, fullLine string, defaultDelay int, layout *hid.Layout) (Instruction, bool, *hid.Layout, error) {
+	if inst, ok, err := compileMouseInstruction(lineNum, cmd, arg, defaultDelay); ok || err != nil {
+		return inst, true, nil, err
 	}
 
 	switch cmd {
-	case "STRING":
-		return fmt.Sprintf("type(%s);", strconv.Quote(arg)), true, nil
-
-	case "STRINGLN":
-		if defaultDelay > 0 {
-			return fmt.Sprintf("type(%s);\ndelay(%d);\npress(\"ENTER\");", strconv.Quote(arg), defaultDelay), true, nil
-		}
-		return fmt.Sprintf("type(%s);\npress(\"ENTER\");", strconv.Quote(arg)), true, nil
-
 	case "LAYOUT":
 		trimmed := strings.TrimSpace(arg)
 		if trimmed == "" {
-			return "", false, fmt.Errorf("line %d: LAYOUT requires a layout argument", lineNum)
+			return Instruction{}, false, nil, fmt.Errorf("line %d: LAYOUT requires a layout argument", lineNum)
 		}
-		return fmt.Sprintf("layout(%s);", strconv.Quote(trimmed)), false, nil
+		nextLayout, err := hid.GetLayout(trimmed)
+		if err != nil {
+			return Instruction{}, false, nil, fmt.Errorf("line %d: %w", lineNum, err)
+		}
+		return Instruction{Kind: OpLayout, Line: lineNum, Text: nextLayout.Name}, false, nextLayout, nil
 
-	case "TYPING_SPEED":
-		js, err := parseTypingSpeed(lineNum, arg)
-		return js, false, err
+	case "TYPING_SPEED", "STRING_DELAY", "STRINGDELAY":
+		inst, err := compileTypingSpeedInstruction(lineNum, cmd, arg)
+		return inst, false, nil, err
 
 	case "WAIT_LED":
-		js, err := parseWaitLED(lineNum, arg)
-		return js, true, err
+		inst, err := compileWaitLEDInstruction(lineNum, arg, defaultDelay)
+		return inst, true, nil, err
 
 	case "HOLD", "RELEASE":
-		keys := parseKeyTokens(arg)
-		if keys == "" {
-			return "", false, fmt.Errorf("line %d: %s requires a key argument", lineNum, cmd)
+		tokens := hid.SplitComboTokens(arg)
+		if len(tokens) == 0 {
+			return Instruction{}, false, nil, fmt.Errorf("line %d: %s requires a key argument", lineNum, cmd)
 		}
-		return fmt.Sprintf("%s(%s);", strings.ToLower(cmd), strconv.Quote(keys)), true, nil
+		joined := strings.Join(tokens, " ")
+		if err := hid.ValidateCombo(layout, joined); err != nil {
+			return Instruction{}, false, nil, fmt.Errorf("line %d: invalid %s key: %w", lineNum, cmd, err)
+		}
+		kind := OpHold
+		if cmd == "RELEASE" {
+			kind = OpRelease
+		}
+		return Instruction{Kind: kind, Line: lineNum, Text: joined, PostDelay: defaultDelay}, true, nil, nil
 
 	default:
-		return parseComboOrSingleKey(line), true, nil
+		tokens := hid.SplitComboTokens(fullLine)
+		joined := strings.Join(tokens, " ")
+		if err := hid.ValidateCombo(layout, joined); err != nil {
+			return Instruction{}, false, nil, fmt.Errorf("line %d: unknown command or key in %q: %w", lineNum, strings.TrimSpace(fullLine), err)
+		}
+		return Instruction{Kind: OpPress, Line: lineNum, Text: joined, PostDelay: defaultDelay}, true, nil, nil
 	}
-}
-
-func parseKeyTokens(s string) string {
-	var tokens []string
-	for _, field := range strings.Fields(s) {
-		if field == "-" {
-			tokens = append(tokens, "-")
-			continue
-		}
-		hasTrailingMinus := strings.HasSuffix(field, "--")
-		target := field
-		if hasTrailingMinus {
-			target = field[:len(field)-1]
-		}
-		for _, part := range strings.Split(target, "-") {
-			if part != "" {
-				tokens = append(tokens, part)
-			}
-		}
-		if hasTrailingMinus {
-			tokens = append(tokens, "-")
-		}
-	}
-	return strings.Join(tokens, " ")
-}
-
-func parseComboOrSingleKey(line string) string {
-	return fmt.Sprintf("press(%s);", strconv.Quote(parseKeyTokens(line)))
 }

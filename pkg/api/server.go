@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/arrase/Raspiducky/pkg/gadget"
 	"github.com/arrase/Raspiducky/pkg/hid"
@@ -14,7 +13,9 @@ import (
 
 const (
 	errInvalidJSON      = "Invalid JSON payload"
+	errCrossOrigin      = "Cross-origin requests are not allowed"
 	maxRequestBodyBytes = 1 << 20 // 1 MB
+	dashboardCSP        = "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 )
 
 // Server represents the Raspiducky REST API & Embedded Web Dashboard Server.
@@ -35,7 +36,7 @@ type ServerOptions struct {
 	Mouse          *hid.Mouse
 	LEDWatcher     *hid.LEDWatcher
 	KeyboardLayout string
-	TypingDelayMs  int
+	TypingDelayMs  *int
 	GadgetManager  *gadget.GadgetManager
 }
 
@@ -47,7 +48,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	hub := NewHub()
-	go hub.Run()
+	hub.Start()
 
 	runner := NewRunnerEngine(hub, opts.Keyboard, opts.Mouse, opts.LEDWatcher)
 	gm := NewGadgetManager(hub, runner, opts)
@@ -83,21 +84,41 @@ func (s *Server) Handler() http.Handler {
 	return s.mux
 }
 
+func requireSameOrigin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isSameOriginRequest(r) {
+			writeError(w, http.StatusForbidden, errCrossOrigin)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func secureStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", dashboardCSP)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/gadget", s.handleGetGadget)
-	s.mux.HandleFunc("POST /api/gadget", s.handlePostGadget)
+	s.mux.HandleFunc("POST /api/gadget", requireSameOrigin(s.handlePostGadget))
 
 	s.mux.HandleFunc("GET /api/scripts", s.handleGetScripts)
-	s.mux.HandleFunc("POST /api/scripts", s.handlePostScripts)
-	s.mux.HandleFunc("DELETE /api/scripts/{name}", s.handleDeleteScript)
+	s.mux.HandleFunc("POST /api/scripts", requireSameOrigin(s.handlePostScripts))
+	s.mux.HandleFunc("DELETE /api/scripts/{name}", requireSameOrigin(s.handleDeleteScript))
 
 	s.mux.HandleFunc("GET /api/job", s.handleGetJob)
-	s.mux.HandleFunc("POST /api/run", s.handleRunScript)
-	s.mux.HandleFunc("POST /api/stop", s.handleStopScript)
+	s.mux.HandleFunc("POST /api/run", requireSameOrigin(s.handleRunScript))
+	s.mux.HandleFunc("POST /api/stop", requireSameOrigin(s.handleStopScript))
 
 	s.mux.HandleFunc("GET /api/ws", s.handleWS)
 
-	s.mux.Handle("/", http.FileServer(WebFS()))
+	s.mux.Handle("/", secureStatic(http.FileServer(WebFS())))
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -106,29 +127,25 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	initial := make([]WSMessage, 0, 3)
 	if s.ledWatcher != nil {
-		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-		_ = conn.WriteJSON(WSMessage{
+		initial = append(initial, WSMessage{
 			Type:    "led_state",
 			Payload: s.ledWatcher.GetState(),
 		})
 	}
-
-	_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-	_ = conn.WriteJSON(WSMessage{
+	initial = append(initial, WSMessage{
 		Type:    "gadget_status",
 		Payload: s.gadgetManager.GetStatus(),
 	})
-
-	if job := s.runnerEngine.GetActiveJob(); job != nil {
-		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-		_ = conn.WriteJSON(WSMessage{
+	if job := s.runnerEngine.GetActiveJob(); job != nil && job.Status == "running" {
+		initial = append(initial, WSMessage{
 			Type:    "job_status",
 			Payload: job,
 		})
 	}
 
-	s.hub.Register(conn)
+	s.hub.Register(conn, initial...)
 }
 
 func (s *Server) listenLEDState() {
@@ -144,10 +161,8 @@ func (s *Server) listenLEDState() {
 	}()
 }
 
-// REST Handlers
 func (s *Server) handleGetGadget(w http.ResponseWriter, _ *http.Request) {
-	status := s.gadgetManager.GetStatus()
-	writeJSON(w, http.StatusOK, status)
+	writeJSON(w, http.StatusOK, s.gadgetManager.GetStatus())
 }
 
 func (s *Server) handlePostGadget(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +248,7 @@ func (s *Server) handleRunScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"message": "Script execution triggered",
 		"jobId":   job.ID,
 		"status":  job.Status,
@@ -251,7 +266,6 @@ func (s *Server) handleStopScript(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// Helpers
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	return json.NewDecoder(r.Body).Decode(dst)

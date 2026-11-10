@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/arrase/Raspiducky/pkg/hid"
@@ -16,6 +17,7 @@ import (
 // RunnerEngine manages payload script execution jobs and live event streaming.
 type RunnerEngine struct {
 	mu         sync.RWMutex
+	seq        atomic.Uint64
 	activeJob  *JobStatus
 	cancelFn   context.CancelFunc
 	jobDone    chan struct{}
@@ -57,19 +59,30 @@ func (re *RunnerEngine) Run(req RunRequest) (JobStatus, error) {
 		}
 	}
 
-	re.mu.Lock()
-	if re.activeJob != nil && re.activeJob.Status == "running" {
-		re.mu.Unlock()
-		return JobStatus{}, errors.New("a job is already running, stop it before starting a new one")
-	}
-
-	jobID := fmt.Sprintf("job-%d", time.Now().UnixNano())
 	scriptName := req.Name
 	if scriptName == "" {
 		scriptName = "inline_payload"
 	}
 	scriptType := scripting.DetectScriptType(req.Type, scriptName)
 
+	// Pre-validate DuckyScript syntax before starting the background job so typos fail immediately.
+	if scriptType == scripting.TypeDuckyScript {
+		initialLayout := req.Layout
+		if initialLayout == "" && re.keyboard != nil {
+			initialLayout = re.keyboard.GetLayout()
+		}
+		if _, err := scripting.CompileDuckyScript(req.Script, initialLayout); err != nil {
+			return JobStatus{}, err
+		}
+	}
+
+	re.mu.Lock()
+	if re.activeJob != nil && re.activeJob.Status == "running" {
+		re.mu.Unlock()
+		return JobStatus{}, errors.New("a job is already running, stop it before starting a new one")
+	}
+
+	jobID := fmt.Sprintf("job-%d-%d", time.Now().UnixNano(), re.seq.Add(1))
 	ctx, cancel := context.WithCancel(context.Background())
 	doneCh := make(chan struct{})
 	re.cancelFn = cancel
@@ -93,30 +106,28 @@ func (re *RunnerEngine) Run(req RunRequest) (JobStatus, error) {
 	return job, nil
 }
 
-// Stop cancels the currently active job and waits for its execution goroutine to clean up.
+// Stop cancels the currently active job, interrupts any blocked HID write, and waits for full cleanup.
 func (re *RunnerEngine) Stop() error {
 	re.mu.Lock()
 	if re.activeJob == nil || re.activeJob.Status != "running" {
 		re.mu.Unlock()
 		return errors.New("no active job is currently running")
 	}
-
-	re.cancelFn()
+	cancel := re.cancelFn
 	doneCh := re.jobDone
-
-	now := time.Now()
-	re.activeJob.Status = "stopped"
-	re.activeJob.FinishedAt = &now
-	stoppedJob := *re.activeJob
 	re.mu.Unlock()
+
+	cancel()
+	if re.keyboard != nil {
+		re.keyboard.Interrupt()
+	}
+	if re.mouse != nil {
+		re.mouse.Interrupt()
+	}
 
 	if doneCh != nil {
 		<-doneCh
 	}
-
-	re.broadcastJobStatus(stoppedJob)
-	re.broadcastLog("WARN", "ENGINE", fmt.Sprintf("Job [%s] manually stopped by user.", stoppedJob.ID))
-
 	return nil
 }
 
@@ -133,13 +144,17 @@ func (w *wsLogWriter) Write(p []byte) (n int, err error) {
 func (re *RunnerEngine) executeJob(ctx context.Context, doneCh chan struct{}, job JobStatus, req RunRequest) {
 	defer close(doneCh)
 
-	origLayout := re.keyboard.GetLayout()
-	origDelay, origJitter := re.keyboard.GetTypingSpeed()
-	if req.TypingDelayMs > 0 {
-		re.keyboard.SetTypingSpeed(req.TypingDelayMs, 0)
-	}
-	if req.Layout != "" {
-		_ = re.keyboard.SetLayout(req.Layout)
+	var origLayout string
+	var origDelay, origJitter int
+	if re.keyboard != nil {
+		origLayout = re.keyboard.GetLayout()
+		origDelay, origJitter = re.keyboard.GetTypingSpeed()
+		if req.TypingDelayMs != nil {
+			re.keyboard.SetTypingSpeed(*req.TypingDelayMs, 0)
+		}
+		if req.Layout != "" {
+			_ = re.keyboard.SetLayout(req.Layout)
+		}
 	}
 
 	source := "DUCKY"
@@ -150,15 +165,13 @@ func (re *RunnerEngine) executeJob(ctx context.Context, doneCh chan struct{}, jo
 	engine := scripting.NewScriptEngine(re.keyboard, re.mouse, re.ledWatcher)
 	execErr := engine.Run(ctx, job.Type, job.ScriptName, req.Script, &wsLogWriter{re: re, source: source})
 
-	_ = re.keyboard.SetLayout(origLayout)
-	re.keyboard.SetTypingSpeed(origDelay, origJitter)
-	_ = re.keyboard.ReleaseKeys()
-
-	re.mu.Lock()
-	defer re.mu.Unlock()
-
-	if re.activeJob == nil || re.activeJob.ID != job.ID || re.activeJob.Status == "stopped" {
-		return
+	if re.keyboard != nil {
+		_ = re.keyboard.SetLayout(origLayout)
+		re.keyboard.SetTypingSpeed(origDelay, origJitter)
+		_ = re.keyboard.ReleaseKeys()
+	}
+	if re.mouse != nil {
+		_ = re.mouse.ReleaseButtons()
 	}
 
 	now := time.Now()
@@ -170,13 +183,24 @@ func (re *RunnerEngine) executeJob(ctx context.Context, doneCh chan struct{}, jo
 	case execErr != nil:
 		job.Status = "failed"
 		job.Error = execErr.Error()
-		re.broadcastLog("ERROR", "ENGINE", fmt.Sprintf("Job [%s] failed: %v", job.ID, execErr))
 	default:
 		job.Status = "completed"
-		re.broadcastLog("INFO", "ENGINE", fmt.Sprintf("Job [%s] completed successfully.", job.ID))
 	}
 
-	re.activeJob = &job
+	re.mu.Lock()
+	if re.activeJob != nil && re.activeJob.ID == job.ID {
+		re.activeJob = &job
+	}
+	re.mu.Unlock()
+
+	switch job.Status {
+	case "stopped":
+		re.broadcastLog("WARN", "ENGINE", fmt.Sprintf("Job [%s] manually stopped by user.", job.ID))
+	case "failed":
+		re.broadcastLog("ERROR", "ENGINE", fmt.Sprintf("Job [%s] failed: %v", job.ID, execErr))
+	case "completed":
+		re.broadcastLog("INFO", "ENGINE", fmt.Sprintf("Job [%s] completed successfully.", job.ID))
+	}
 	re.broadcastJobStatus(job)
 }
 
